@@ -1,0 +1,431 @@
++----------------------------------------------------------------------------------------------+
+|                                         READABLE                                             |
++----------------------------------------------------------------------------------------------+
+|1	|3FR		|Hasselblad CFV/H3D39II Raw Format
+|2	|3G2		|Media Container
+|3	|3GP		|Media Container
+|4	|AAI		|AAI Dune image
+|5	|AI		|Adobe Illustrator CS2
+|6	|APNG		|Animated Portable Network Graphics
+|7	|ART		|PFS: 1st Publisher Clip Art
+|8	|ARW		|Sony Alpha Raw Format
+|9	|ASE		|Aseprite Sprite Format
+|10	|ASEPRITE		|Aseprite Sprite Format
+|11	|AVCI		|AVC Image File Format
+|12	|AVI		|Microsoft Audio/Visual Interleaved
+|13	|AVIF		|AV1 Image File Format
+|14	|AVS		|AVS X image
+|15	|BAYER		|Raw mosaiced samples
+|16	|BAYERA		|Raw mosaiced and alpha samples
+|17	|BGR		|Raw blue, green, and red samples
+|18	|BGRA		|Raw blue, green, red, and alpha samples
+|19	|BGRO		|Raw blue, green, red, and opacity samples
+|20	|BIE		|Joint Bi-level Image experts Group interchange format
+|21	|BMP		|Microsoft Windows bitmap image
+|22	|BMP2		|Microsoft Windows bitmap image (V2)
+|23	|BMP3		|Microsoft Windows bitmap image (V3)
+|24	|C2PA		|C2PA Provenance Metadata
+|25	|CAL		|Continuous Acquisition and Life-cycle Support Type 1
+|26	|CALS		|Continuous Acquisition and Life-cycle Support Type 1
+|27	|CANVAS		|Constant image uniform color
+|28	|CAPTION		|Caption
+|29	|CIN		|Cineon Image File
+|30	|CLIP		|Image Clip Mask
+|31	|CLIPBOARD		|The system clipboard
+|32	|CMYK		|Raw cyan, magenta, yellow, and black samples
+|33	|CMYKA		|Raw cyan, magenta, yellow, black, and alpha samples
+|34	|CR2		|Canon Digital Camera Raw Format
+|35	|CR3		|Canon Digital Camera Raw Format
+|36	|CRW		|Canon Digital Camera Raw Format
+|37	|CUBE		|Cube LUT
+|38	|CUR		|Microsoft icon
+|39	|CUT		|DR Halo
+|40	|DATA		|Base64-encoded inline images
+|41	|DCM		|Digital Imaging and Communications in Medicine image
+|42	|DCR		|Kodak Digital Camera Raw Format
+|43	|DCRAW		|Raw Photo Decoder (dcraw)
+|44	|DCX		|ZSoft IBM PC multi-page Paintbrush
+|45	|DDS		|Microsoft DirectDraw Surface
+|46	|DFONT		|Multi-face font package
+|47	|DJVU		|Deja vu
+|48	|DNG		|Digital Negative Raw Format
+|49	|DOT		|Graphviz
+|50	|DPX		|SMPTE 268M-2003 (DPX 2.0)
+|51	|DXT1		|Microsoft DirectDraw Surface
+|52	|DXT5		|Microsoft DirectDraw Surface
+|53	|EMF		|Windows Enhanced Meta File
+|54	|EPDF		|Encapsulated Portable Document Format
+|55	|EPI		|Encapsulated PostScript Interchange format
+|56	|EPS		|Encapsulated PostScript
+|57	|EPSF		|Encapsulated PostScript
+|58	|EPSI		|Encapsulated PostScript Interchange format
+|59	|EPT		|Encapsulated PostScript with TIFF preview
+|60	|EPT2		|Encapsulated PostScript Level II with TIFF preview
+|61	|EPT3		|Encapsulated PostScript Level III with TIFF preview
+|62	|ERF		|Epson Raw Format
+|63	|EXR		|High Dynamic-range (HDR)
+|64	|FARBFELD		|Farbfeld
+|65	|FAX		|Group 3 FAX
+|66	|FF		|Farbfeld
+|67	|FFF		|Hasselblad CFV/H3D39II Raw Format
+|68	|FILE		|Uniform Resource Locator (file://)
+|69	|FITS		|Flexible Image Transport System
+|70	|FL32		|FilmLight
+|71	|FLV		|Flash Video Stream
+|72	|FRACTAL		|Plasma fractal image
+|73	|FTP		|Uniform Resource Locator (ftp://)
+|74	|FTS		|Flexible Image Transport System
+|75	|FTXT		|Formatted text image
+|76	|G3		|Group 3 FAX
+|77	|G4		|Group 4 FAX
+|78	|GIF		|CompuServe graphics interchange format
+|79	|GIF87		|CompuServe graphics interchange format
+|80	|GRADIENT		|Gradual linear passing from one shade to another
+|81	|GRAY		|Raw gray samples
+|82	|GRAYA		|Raw gray and alpha samples
+|83	|GROUP4		|Raw CCITT Group4
+|84	|GV		|Graphviz
+|85	|HALD		|Identity Hald color lookup table image
+|86	|HDR		|Radiance RGBE image format
+|87	|HEIC		|High Efficiency Image Format
+|88	|HEIF		|High Efficiency Image Format
+|89	|HRZ		|Slow Scan TeleVision
+|90	|HTTP		|Uniform Resource Locator (http://)
+|91	|HTTPS		|Uniform Resource Locator (https://)
+|92	|ICB		|Truevision Targa image
+|93	|ICN		|Microsoft icon
+|94	|ICO		|Microsoft icon
+|95	|ICON		|Microsoft icon
+|96	|IIQ		|Phase One Raw Format
+|97	|INLINE		|Base64-encoded inline images
+|98	|IPL		|IPL Image Sequence
+|99	|J2C		|JPEG-2000 Code Stream Syntax
+|100	|J2K		|JPEG-2000 Code Stream Syntax
+|101	|JBG		|Joint Bi-level Image experts Group interchange format
+|102	|JBIG		|Joint Bi-level Image experts Group interchange format
+|103	|JNG		|JPEG Network Graphics
+|104	|JNX		|Garmin tile format
+|105	|JP2		|JPEG-2000 File Format Syntax
+|106	|JPC		|JPEG-2000 Code Stream Syntax
+|107	|JPE		|Joint Photographic Experts Group JFIF format
+|108	|JPEG		|Joint Photographic Experts Group JFIF format
+|109	|JPG		|Joint Photographic Experts Group JFIF format
+|110	|JPM		|JPEG-2000 File Format Syntax
+|111	|JPS		|Joint Photographic Experts Group JFIF format
+|112	|JPT		|JPEG-2000 File Format Syntax
+|113	|K25		|Kodak Digital Camera Raw Format
+|114	|KDC		|Kodak Digital Camera Raw Format
+|115	|LABEL		|Image label
+|116	|M2V		|MPEG Video Stream
+|117	|M4V		|Raw VIDEO-4 Video
+|118	|MAC		|MAC Paint
+|119	|MAP		|Colormap intensities and indices
+|120	|MASK		|Image Clip Mask
+|121	|MAT		|MATLAB level 5 image format
+|122	|MDC		|Minolta Digital Camera Raw Format
+|123	|MEF		|Mamiya Raw Format
+|124	|MIFF		|Magick Image File Format
+|125	|MKV		|Multimedia Container
+|126	|MNG		|Multiple-image Network Graphics
+|127	|MONO		|Raw bi-level bitmap
+|128	|MOS		|Aptus Leaf Raw Format
+|129	|MOV		|MPEG Video Stream
+|130	|MP4		|VIDEO-4 Video Stream
+|131	|MPC		|Magick Pixel Cache image format
+|132	|MPEG		|MPEG Video Stream
+|133	|MPG		|MPEG Video Stream
+|134	|MPO		|Joint Photographic Experts Group JFIF format
+|135	|MRW		|Sony (Minolta) Raw Format
+|136	|MSL		|Magick Scripting Language
+|137	|MSVG		|ImageMagick's own SVG internal renderer
+|138	|MTV		|MTV Raytracing image format
+|139	|MVG		|Magick Vector Graphics
+|140	|NEF		|Nikon Digital SLR Camera Raw Format
+|141	|NRW		|Nikon Digital SLR Camera Raw Format
+|142	|NULL		|Constant image of uniform color
+|143	|ORF		|Olympus Digital Camera Raw Format
+|144	|OTB		|On-the-air bitmap
+|145	|OTF		|Open Type font
+|146	|PAL		|16bit/pixel interleaved YUV
+|147	|PALM		|Palm pixmap
+|148	|PAM		|Common 2-dimensional bitmap format
+|149	|PANGO		|Pango Markup Language
+|150	|PATTERN		|Predefined pattern
+|151	|PBM		|Portable bitmap format (black and white)
+|152	|PCD		|Photo CD
+|153	|PCDS		|Photo CD
+|154	|PCL		|Printer Control Language
+|155	|PCT		|Apple Macintosh QuickDraw/PICT
+|156	|PCX		|ZSoft IBM PC Paintbrush
+|157	|PDB		|Palm Database ImageViewer Format
+|158	|PDF		|Portable Document Format
+|159	|PDFA		|Portable Document Archive Format
+|160	|PEF		|Pentax Electronic Raw Format
+|161	|PES		|Embrid Embroidery Format
+|162	|PFA		|Postscript Type 1 font (ASCII)
+|163	|PFB		|Postscript Type 1 font (binary)
+|164	|PFM		|Portable float format
+|165	|PGM		|Portable graymap format (gray scale)
+|166	|PGX		|JPEG 2000 uncompressed format
+|167	|PHM		|Portable half float format
+|168	|PICON		|Personal Icon
+|169	|PICT		|Apple Macintosh QuickDraw/PICT
+|170	|PIX		|Alias/Wavefront RLE image format
+|171	|PJPEG		|Joint Photographic Experts Group JFIF format
+|172	|PLASMA		|Plasma fractal image
+|173	|PNG		|Portable Network Graphics
+|174	|PNG00		|PNG inheriting bit-depth, color-type from original, if possible
+|175	|PNG24		|opaque or binary transparent 24-bit RGB
+|176	|PNG32		|opaque or transparent 32-bit RGBA
+|177	|PNG48		|opaque or binary transparent 48-bit RGB
+|178	|PNG64		|opaque or transparent 64-bit RGBA
+|179	|PNG8		|8-bit indexed with optional binary transparency
+|180	|PNM		|Portable anymap
+|181	|POCKETMOD		|Pocketmod Personal Organizer
+|182	|PPM		|Portable pixmap format (color)
+|183	|PS		|PostScript
+|184	|PSB		|Adobe Large Document Format
+|185	|PSD		|Adobe Photoshop bitmap
+|186	|PTIF		|Pyramid encoded TIFF
+|187	|PWP		|Seattle Film Works
+|188	|QOI		|Quite OK image format
+|189	|RADIAL-GRADIENT		|Gradual radial passing from one shade to another
+|190	|RAF		|Fuji CCD-RAW Graphic Raw Format
+|191	|RAS		|SUN Rasterfile
+|192	|RAW		|Raw
+|193	|RGB		|Raw red, green, and blue samples
+|194	|RGB565		|Raw red, green, blue samples in 565 format
+|195	|RGBA		|Raw red, green, blue, and alpha samples
+|196	|RGBO		|Raw red, green, blue, and opacity samples
+|197	|RGF		|LEGO Mindstorms EV3 Robot Graphic Format (black and white)
+|198	|RLA		|Alias/Wavefront image
+|199	|RLE		|Utah Run length encoded image
+|200	|RMF		|Raw Media Format
+|201	|RSVG		|Librsvg SVG renderer
+|202	|RW2		|Panasonic Lumix Raw Format
+|203	|RWL		|Leica Raw Format
+|204	|SCR		|ZX-Spectrum SCREEN$
+|205	|SCT		|Scitex HandShake
+|206	|SF3		|Simple File Format Family Images
+|207	|SFW		|Seattle Film Works
+|208	|SGI		|Irix RGB image
+|209	|SIX		|DEC SIXEL Graphics Format
+|210	|SIXEL		|DEC SIXEL Graphics Format
+|211	|SR2		|Sony Raw Format 2
+|212	|SRF		|Sony Raw Format
+|213	|SRW		|Samsung Raw Format
+|214	|STEGANO		|Steganographic image
+|215	|STI		|Sinar CaptureShop Raw Format
+|216	|STRIMG		|String to image and back
+|217	|SUN		|SUN Rasterfile
+|218	|SVG		|Scalable Vector Graphics
+|219	|SVGZ		|Compressed Scalable Vector Graphics
+|220	|TEXT		|Text
+|221	|TGA		|Truevision Targa image
+|222	|TIFF		|Tagged Image File Format
+|223	|TIFF64		|Tagged Image File Format (64-bit)
+|224	|TILE		|Tile image with a texture
+|225	|TIM		|PSX TIM
+|226	|TM2		|PS2 TIM2
+|227	|TTC		|TrueType font collection
+|228	|TTF		|TrueType font
+|229	|TXT		|Text
+|230	|UYVY		|16bit/pixel interleaved YUV
+|231	|VDA		|Truevision Targa image
+|232	|VICAR		|Video Image Communication And Retrieval
+|233	|VID		|Visual Image Directory
+|234	|VIFF		|Khoros Visualization image
+|235	|VIPS		|VIPS image
+|236	|VST		|Truevision Targa image
+|237	|WBINFO		|Amiga Workbench Icon
+|238	|WBMP		|Wireless Bitmap (level 0) image
+|239	|WEBM		|Open Web Media
+|240	|WEBP		|WebP Image Format
+|241	|WMF		|Windows Meta File
+|242	|WMV		|Windows Media Video
+|243	|WPG		|Word Perfect Graphics
+|244	|X3F		|Sigma Camera RAW Format
+|245	|XBM		|X Windows system bitmap (black and white)
+|246	|XC		|Constant image uniform color
+|247	|XCF		|GIMP image
+|248	|XPM		|X Windows system pixmap (color)
+|249	|XPS		|Microsoft XML Paper Specification
+|250	|XV		|Khoros Visualization image
+|251	|YCBCR		|Raw Y, Cb, and Cr samples
+|252	|YCBCRA		|Raw Y, Cb, Cr, and alpha samples
+|253	|YUV		|CCIR 601 4:1:1 or 4:2:2
+|Total readable:	253
+
++----------------------------------------------------------------------------------------------+
+|                                         WRITABLE                                             |
++----------------------------------------------------------------------------------------------+
+|1		|AAI		|AAI Dune image
+|2		|AI		|Adobe Illustrator CS2
+|3		|APNG		|Animated Portable Network Graphics
+|4		|ART		|PFS: 1st Publisher Clip Art
+|5		|ASE		|Aseprite Sprite Format
+|6		|ASEPRITE		|Aseprite Sprite Format
+|7		|AVCI		|AVC Image File Format
+|8		|AVIF		|AV1 Image File Format
+|9		|AVS		|AVS X image
+|10		|BAYER		|Raw mosaiced samples
+|11		|BAYERA		|Raw mosaiced and alpha samples
+|12		|BGR		|Raw blue, green, and red samples
+|13		|BGRA		|Raw blue, green, red, and alpha samples
+|14		|BGRO		|Raw blue, green, red, and opacity samples
+|15		|BIE		|Joint Bi-level Image experts Group interchange format
+|16		|BMP		|Microsoft Windows bitmap image
+|17		|BMP2		|Microsoft Windows bitmap image (V2)
+|18		|BMP3		|Microsoft Windows bitmap image (V3)
+|19		|CAL		|Continuous Acquisition and Life-cycle Support Type 1
+|20		|CALS		|Continuous Acquisition and Life-cycle Support Type 1
+|21		|CIN		|Cineon Image File
+|22		|CLIP		|Image Clip Mask
+|23		|CLIPBOARD		|The system clipboard
+|24		|CMYK		|Raw cyan, magenta, yellow, and black samples
+|25		|CMYKA		|Raw cyan, magenta, yellow, black, and alpha samples
+|26		|CUR		|Microsoft icon
+|27		|DATA		|Base64-encoded inline images
+|28		|DCX		|ZSoft IBM PC multi-page Paintbrush
+|29		|DDS		|Microsoft DirectDraw Surface
+|30		|DPX		|SMPTE 268M-2003 (DPX 2.0)
+|31		|DXT1		|Microsoft DirectDraw Surface
+|32		|DXT5		|Microsoft DirectDraw Surface
+|33		|EPDF		|Encapsulated Portable Document Format
+|34		|EPI		|Encapsulated PostScript Interchange format
+|35		|EPS		|Encapsulated PostScript
+|36		|EPSF		|Encapsulated PostScript
+|37		|EPSI		|Encapsulated PostScript Interchange format
+|38		|EPT		|Encapsulated PostScript with TIFF preview
+|39		|EPT2		|Encapsulated PostScript Level II with TIFF preview
+|40		|EPT3		|Encapsulated PostScript Level III with TIFF preview
+|41		|EXR		|High Dynamic-range (HDR)
+|42		|FARBFELD		|Farbfeld
+|43		|FAX		|Group 3 FAX
+|44		|FF		|Farbfeld
+|45		|FITS		|Flexible Image Transport System
+|46		|FL32		|FilmLight
+|47		|FLV		|Flash Video Stream
+|48		|FTS		|Flexible Image Transport System
+|49		|FTXT		|Formatted text image
+|50		|G3		|Group 3 FAX
+|51		|G4		|Group 4 FAX
+|52		|GIF		|CompuServe graphics interchange format
+|53		|GIF87		|CompuServe graphics interchange format
+|54		|GRAY		|Raw gray samples
+|55		|GRAYA		|Raw gray and alpha samples
+|56		|GROUP4		|Raw CCITT Group4
+|57		|HDR		|Radiance RGBE image format
+|58		|HEIC		|High Efficiency Image Format
+|59		|HEIF		|High Efficiency Image Format
+|60		|HRZ		|Slow Scan TeleVision
+|61		|ICB		|Truevision Targa image
+|62		|ICN		|Microsoft icon
+|63		|ICO		|Microsoft icon
+|64		|ICON		|Microsoft icon
+|65		|INLINE		|Base64-encoded inline images
+|66		|IPL		|IPL Image Sequence
+|67		|J2C		|JPEG-2000 Code Stream Syntax
+|68		|J2K		|JPEG-2000 Code Stream Syntax
+|69		|JBG		|Joint Bi-level Image experts Group interchange format
+|70		|JBIG		|Joint Bi-level Image experts Group interchange format
+|71		|JNG		|JPEG Network Graphics
+|72		|JP2		|JPEG-2000 File Format Syntax
+|73		|JPC		|JPEG-2000 Code Stream Syntax
+|74		|JPE		|Joint Photographic Experts Group JFIF format
+|75		|JPEG		|Joint Photographic Experts Group JFIF format
+|76		|JPG		|Joint Photographic Experts Group JFIF format
+|77		|JPM		|JPEG-2000 File Format Syntax
+|78		|JPS		|Joint Photographic Experts Group JFIF format
+|79		|JPT		|JPEG-2000 File Format Syntax
+|80		|M2V		|MPEG Video Stream
+|81		|M4V		|Raw VIDEO-4 Video
+|82		|MAP		|Colormap intensities and indices
+|83		|MASK		|Image Clip Mask
+|84		|MAT		|MATLAB level 5 image format
+|85		|MIFF		|Magick Image File Format
+|86		|MKV		|Multimedia Container
+|87		|MNG		|Multiple-image Network Graphics
+|88		|MONO		|Raw bi-level bitmap
+|89		|MOV		|MPEG Video Stream
+|90		|MP4		|VIDEO-4 Video Stream
+|91		|MPC		|Magick Pixel Cache image format
+|92		|MPEG		|MPEG Video Stream
+|93		|MPG		|MPEG Video Stream
+|94		|MSVG		|ImageMagick's own SVG internal renderer
+|95		|MTV		|MTV Raytracing image format
+|96		|MVG		|Magick Vector Graphics
+|97		|NULL		|Constant image of uniform color
+|98		|OTB		|On-the-air bitmap
+|99		|PAL		|16bit/pixel interleaved YUV
+|100		|PALM		|Palm pixmap
+|101		|PAM		|Common 2-dimensional bitmap format
+|102		|PBM		|Portable bitmap format (black and white)
+|103		|PCD		|Photo CD
+|104		|PCDS		|Photo CD
+|105		|PCL		|Printer Control Language
+|106		|PCT		|Apple Macintosh QuickDraw/PICT
+|107		|PCX		|ZSoft IBM PC Paintbrush
+|108		|PDB		|Palm Database ImageViewer Format
+|109		|PDF		|Portable Document Format
+|110		|PDFA		|Portable Document Archive Format
+|111		|PFM		|Portable float format
+|112		|PGM		|Portable graymap format (gray scale)
+|113		|PGX		|JPEG 2000 uncompressed format
+|114		|PHM		|Portable half float format
+|115		|PICON		|Personal Icon
+|116		|PICT		|Apple Macintosh QuickDraw/PICT
+|117		|PJPEG		|Joint Photographic Experts Group JFIF format
+|118		|PNG		|Portable Network Graphics
+|119		|PNG00		|PNG inheriting bit-depth, color-type from original, if possible
+|120		|PNG24		|opaque or binary transparent 24-bit RGB
+|121		|PNG32		|opaque or transparent 32-bit RGBA
+|122		|PNG48		|opaque or binary transparent 48-bit RGB
+|123		|PNG64		|opaque or transparent 64-bit RGBA
+|124		|PNG8		|8-bit indexed with optional binary transparency
+|125		|PNM		|Portable anymap
+|126		|POCKETMOD		|Pocketmod Personal Organizer
+|127		|PPM		|Portable pixmap format (color)
+|128		|PS		|PostScript
+|129		|PSB		|Adobe Large Document Format
+|130		|PSD		|Adobe Photoshop bitmap
+|131		|PTIF		|Pyramid encoded TIFF
+|132		|QOI		|Quite OK image format
+|133		|RAS		|SUN Rasterfile
+|134		|RGB		|Raw red, green, and blue samples
+|135		|RGBA		|Raw red, green, blue, and alpha samples
+|136		|RGBO		|Raw red, green, blue, and opacity samples
+|137		|RGF		|LEGO Mindstorms EV3 Robot Graphic Format (black and white)
+|138		|RSVG		|Librsvg SVG renderer
+|139		|SF3		|Simple File Format Family Images
+|140		|SGI		|Irix RGB image
+|141		|SIX		|DEC SIXEL Graphics Format
+|142		|SIXEL		|DEC SIXEL Graphics Format
+|143		|STRIMG		|String to image and back
+|144		|SUN		|SUN Rasterfile
+|145		|SVG		|Scalable Vector Graphics
+|146		|SVGZ		|Compressed Scalable Vector Graphics
+|147		|TGA		|Truevision Targa image
+|148		|TIFF		|Tagged Image File Format
+|149		|TIFF64		|Tagged Image File Format (64-bit)
+|150		|TXT		|Text
+|151		|UYVY		|16bit/pixel interleaved YUV
+|152		|VDA		|Truevision Targa image
+|153		|VICAR		|Video Image Communication And Retrieval
+|154		|VID		|Visual Image Directory
+|155		|VIFF		|Khoros Visualization image
+|156		|VIPS		|VIPS image
+|157		|VST		|Truevision Targa image
+|158		|WBMP		|Wireless Bitmap (level 0) image
+|159		|WEBM		|Open Web Media
+|160		|WEBP		|WebP Image Format
+|161		|WMV		|Windows Media Video
+|162		|WPG		|Word Perfect Graphics
+|163		|XBM		|X Windows system bitmap (black and white)
+|164		|XPM		|X Windows system pixmap (color)
+|165		|XV		|Khoros Visualization image
+|166		|YCBCR		|Raw Y, Cb, and Cr samples
+|167		|YCBCRA		|Raw Y, Cb, Cr, and alpha samples
+|168		|YUV		|CCIR 601 4:1:1 or 4:2:2
+|Total writable:	168
+

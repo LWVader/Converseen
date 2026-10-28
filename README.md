@@ -1,62 +1,106 @@
-# Converseen
+# Pixel Shroom Converseen — Phase 2 UI Update
 
-![alt text](https://converseen.fasterland.net/images/converseen_013_github.png "Converseen on Kde")
+Phase 2 is a focused upgrade for an **existing Converseen fork with Phase 1 already installed and working**. It is not a standalone application or executable.
 
-**Converseen** is a free **cross-platform batch image processor** for **Windows**, **Linux**, **macOS**, **FreeBSD**, and other operating systems. It allows you to **convert**, **resize**, **rotate**, and **flip** an infinite number of images with a single mouse click. Moreover, **Converseen** can convert an entire **PDF** document into a set of images with your preferred characteristics. You can choose from over **100+ formats**, set the size, resolution, and the filename.
+## What changed
 
-Thanks to **ImageMagick**, the powerful image manipulation library, **Converseen** can handle more than **100 image formats**, including **DPX, EXR, GIF, JPEG, JPEG-2000, PNG, SVG, TIFF, WebP, HEIC/HEIF**, and many others. **Converseen** is designed to be user-friendly, fast, practical, and best of all, it’s available for **free**!
+### 1. Conversion Status window
 
-## What you can do with *Converseen*?
+- Increase initial window size to 760 × 420 with a 640 × 340 minimum.
+- Make the **Image** column stretch and keep **Status** in its own fixed-width column.
+- Truncate visually with a middle ellipsis instead of drawing long filenames through the status column.
+- Show the full filename and full status in tooltips when hovering over rows.
+- Preserve existing batch status, close, and abort behavior.
 
-With **Converseen** you can:
-* Carry out a single or a multiple conversion.
-* Resize one or multiple images.
-* Compress images for your web pages.
-* Rotate and flip images.
-* Rename a set of images using a progressive number or a prefix/suffix.
-* Selecting a resampling filter to resize images.
-* Convert an entire PDF to a bunch of images
+### 2. Pixel Shroom | Image Studio
 
-## Installing
+Replaces the cramped Phase 1 single-row panel with dark, blue-accented, Squoosh-inspired tabs:
 
-**Converseen** is available for free for several operating systems including **Windows 7/8/10/11**, all versions of **Linux** such as **Ubuntu, Mint, Fedora, Arch Linux, openSUSE** either through the **official repos** or through **AppImage**, **Snap** and **Flatpak** packages, **macOS 13+**, but also **FreeBSD**.
+**Resize** — Preset dropdown, editable width/height in pixels, aspect-fit toggle, resize filter (Automatic/Lanczos/Mitchell/Catrom/Triangle), print-resolution checkbox and DPI setting.
 
-* [Download for Windows](https://converseen.fasterland.net/download-for-windows/)
-* [Download for Linux](https://converseen.fasterland.net/download-for-linux/)
-* [Download for macOS](https://converseen.fasterland.net/download-for-macos/)
-* [Download for FreeBSD](https://converseen.fasterland.net/download-freebsd/)
+**Compress** — Checkbox-controlled JPEG/WebP quality override, linked quality slider and numerical value (1–100), plus an Advanced button to open the existing Converseen quality/format dialog. PNG keeps its native lossless settings. When the quality override is enabled, the original Phase 1 conversion logic switches WebP to lossy (by design).
 
-## Author
+**Enhance** — Separate sliders and numbers for Gaussian smoothing and sharpening (0.0–2.0 sigma; **0 = off**). Phase 1's converter still applies these opt-in enhancements. Smoothing here is an image blur filter, **not the same control** as MozJPEG's compressor-specific smoothing setting in Squoosh.
 
-[Francesco Mondello](https://converseen.fasterland.net/).
-To contact me you can use [this page](https://converseen.fasterland.net/contact-me/).
+A **Hide controls** toggle collapses the editor to leave more room for the image list. Existing advanced/native Converseen controls remain available.
 
+### Unchanged
 
-You can find more details about **Converseen** at [converseen.fasterland.net](https://converseen.fasterland.net/).
-If you enjoy this work, feel free to contribute to its development by making a **donation** on [**PayPal**, **Ko-Fi**, or using **Cryptocurrencies**](https://converseen.fasterland.net/donate/)!
+- Existing conversion/resize processing code (`src/converter.cpp`, `src/converter.h`)
+- Your Phase 1 quality override and enhancement engine
+- `src/main.cpp`, the MSYS2 runtime DLL setup, and the existing FLIF warning
+- `CMakeLists.txt`, Qt Designer UI files, and original application settings
 
-## Privacy Policy
+## Install on Windows
 
-This program will not transfer any information to other networked systems.
+1. **Close Converseen** and keep your existing Phase 1 working-build backup.
+2. Extract this ZIP.
+3. Copy `pixel_shroom_converseen_phase2.py` into:
 
-## Code Signing
+   `C:\Users\bulls\Documents\Projects\Converseen\`
 
-For the **Windows** binaries for **Converseen**, this program uses free code signing provided by [SignPath.io](https://signpath.io/), certificate by the [SignPath Foundation](https://signpath.org/).
+4. Open **Windows PowerShell**:
 
-## License
+   ```powershell
+   cd 'C:\Users\bulls\Documents\Projects\Converseen'
+   py -3 .\pixel_shroom_converseen_phase2.py
+   ```
 
-    Converseen - The image batch converter and resizer
-    Copyright (C) 2009 - 2026  Francesco Mondello
+   You must see `DRY RUN PASSED`. This step checks compatibility without modifying files.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+5. Apply:
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+   ```powershell
+   py -3 .\pixel_shroom_converseen_phase2.py --apply
+   ```
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   Before touching the source, the script backs up **the entire current `build` directory** and both files listed below to a sibling folder named `Converseen-phase2-working-backup-YYYYMMDD-HHMMSS`.
+
+6. Open **MSYS2 UCRT64**:
+
+   ```bash
+   cd /c/Users/bulls/Documents/Projects/Converseen
+   cmake --build build --parallel 4
+   ./build/converseen.exe
+   ```
+
+   If compilation fails, paste the **first `error:` line and ten surrounding lines**, not just the final Ninja message.
+
+## Source files replaced
+
+Only these files are edited:
+
+- `src/mainwindowimpl.cpp` — replaces the Phase 1 panel function and adds UI includes.
+- `src/dialogconversionstatus.cpp` — fixes long-filename display and window sizing.
+
+The patch **does not remove or modify** your current `build/converseen.exe` until you explicitly run CMake to rebuild.
+
+## Test plan
+
+1. Verify the status window displays long filenames in a separate column from `Converted`, `Skipped`, and `Error`.
+2. Resize a **copy** of one square image using the 600 × 600 web preset. Confirm size.
+3. Convert to JPEG at quality 90 (with quality override checked) and compare file sizes with quality 100.
+4. Try Enhance at smoothing 0.0/sharpen 0.0, then light settings to verify that effects are optional.
+5. Test the 16 × 16 in preset (4800 × 4800 pixels and 300 DPI) with a square source. **DPI alone does not add source image detail.**
+6. Test a non-square source against a square target: when aspect ratio is checked, the result **fits within** the target and may not exactly fill it. Unchecking aspect ratio stretches the output (no auto-cropping is performed).
+
+ImageMagick output verification:
+
+```bash
+magick identify -format '%f: %wx%h, %x x %y %U, quality %Q\n' '/path/to/image.jpg'
+```
+
+## Rollback
+
+Close Converseen, open the sibling `Converseen-phase2-working-backup-...` folder created by the script, and copy these original files into the corresponding project paths:
+
+- `src/mainwindowimpl.cpp`
+- `src/dialogconversionstatus.cpp`
+
+Then run `cmake --build build --parallel 4`. If needed, the backup also contains the complete original `build` directory.
+
+**Never use `git restore src/main.cpp`** to roll this back; it could undo the separate DLL troubleshooting changes.
+
+## Compatibility and verification
+
+This Phase 2 script was tested with a simulated Phase 1 project for safe anchor matching, preview-only mode, full-build backup, application, and double-application rejection. **It has not been compiled on your Windows machine**, so the local build remains the decisive test. It refuses to edit unmatched or already-Phase-2 source, instead of guessing where to insert code. Because Converseen is GPL software, preserve the required GPL notices and obligations if distributing a modified build.
