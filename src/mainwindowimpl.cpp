@@ -22,6 +22,30 @@
 */
 
 #include <QColorDialog>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QComboBox>
+#include <QCheckBox>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QLabel>
+#include <QPushButton>
+#include <QSize>
+#include <QTabWidget>
+#include <QTabBar>
+#include <QDialog>
+#include <QImageReader>
+#include <QPixmap>
+#include <QFileInfo>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QGridLayout>
+#include <QSlider>
+#include <QSignalBlocker>
+#include <QFrame>
+#include <QToolButton>
+#include <QHeaderView>
 #include <QTimer>
 #include <QStyleFactory>
 #include <QImageReader>
@@ -108,6 +132,7 @@ MainWindowImpl::MainWindowImpl(QWidget * parent)
     createContextMenu();
 
     loadOptions();
+    setupPixelShroomControls();
 
     resetDisplays();
 
@@ -128,6 +153,491 @@ MainWindowImpl::MainWindowImpl(QWidget * parent)
 #endif
 
     checkVersion();
+}
+
+void MainWindowImpl::setupPixelShroomControls()
+{
+    // Phase 2: Squoosh-inspired, accessible tabs; no changes to the batch engine.
+    auto *panel = new QFrame(centralwidget);
+    panel->setObjectName("psStudioPanel");
+    panel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    panel->setStyleSheet(R"PSCSS(
+        QFrame#psStudioPanel { background: #20252b; border: 1px solid #4a5662;
+            border-radius: 8px; color: #f4f6f8; }
+        QFrame#psStudioPanel QLabel, QFrame#psStudioPanel QCheckBox {
+            color: #f4f6f8; border: none; background: transparent; }
+        QFrame#psStudioPanel QTabWidget::pane { border: 0; background: #20252b; }
+        QWidget#psResizeTab, QWidget#psCompressTab, QWidget#psEnhanceTab {
+            background: #20252b; }
+        QFrame#psStudioPanel QTabBar::tab { background: #303941; color: #e8eef4;
+            min-width: 78px; padding: 9px 15px; border: 0; }
+        QFrame#psStudioPanel QTabBar::tab:selected { background: #68b9e7; color: #121c28; }
+        QFrame#psStudioPanel QComboBox, QFrame#psStudioPanel QSpinBox,
+        QFrame#psStudioPanel QDoubleSpinBox { color: #f5f7f9; background: #323941;
+            border: 1px solid #63717e; border-radius: 4px; min-height: 27px;
+            padding: 2px 7px; }
+        QFrame#psStudioPanel QPushButton, QFrame#psStudioPanel QToolButton {
+            color: #f4f6f8; background: #364650; border: 1px solid #667a89;
+            border-radius: 4px; padding: 5px 9px; }
+        QFrame#psStudioPanel QSlider::groove:horizontal {
+            height: 5px; background: #647783; border-radius: 2px; }
+        QFrame#psStudioPanel QSlider::handle:horizontal { background: #68b9e7;
+            border-radius: 8px; width: 16px; margin: -6px 0; }
+    )PSCSS");
+    auto *root = new QVBoxLayout(panel);
+    root->setContentsMargins(12, 10, 12, 9);
+    root->setSpacing(7);
+    auto *heading = new QHBoxLayout();
+    auto *title = new QLabel(tr("PIXEL SHROOM  |  IMAGE STUDIO"), panel);
+    QFont titleFont = title->font();
+    titleFont.setBold(true);
+    title->setFont(titleFont);
+    heading->addWidget(title, 1);
+
+    // Pixel Shroom Phase 4: compare the selected original with an actual exported image.
+    // This compares real files AFTER conversion, not a simulated encoder preview.
+    auto *compareOutput = new QPushButton(tr("Compare output..."), panel);
+    compareOutput->setToolTip(tr("Compare your selected input with an exported JPEG, PNG or WebP file."));
+    heading->addWidget(compareOutput);
+    connect(compareOutput, &QPushButton::clicked, this, [this]() {
+        const int selectedRow = treeWidget->currentIndex().row();
+        if (selectedRow < 0 || selectedRow >= iAList->size()) {
+            QMessageBox::information(this, tr("Choose an original"),
+                                     tr("Select an imported image in the list first."));
+            return;
+        }
+        const QString originalPath = iAList->at(selectedRow).completeFileName;
+        if (!QFileInfo::exists(originalPath)) {
+            QMessageBox::warning(this, tr("Original unavailable"),
+                                 tr("The selected source file could not be found."));
+            return;
+        }
+        const QString suggestedFolder = checkSameDir->isChecked()
+            ? QFileInfo(originalPath).absolutePath() : lineDirectory->text();
+        const QString exportedPath = QFileDialog::getOpenFileName(
+            this, tr("Select your converted image"), suggestedFolder,
+            tr("Artwork (*.png *.jpg *.jpeg *.webp *.tif *.tiff);;All files (*.*)"));
+        if (exportedPath.isEmpty())
+            return;
+
+        QDialog dlg(this);
+        dlg.setWindowTitle(tr("Pixel Shroom | Compare original and output"));
+        dlg.resize(1010, 620);
+        dlg.setMinimumSize(720, 480);
+        dlg.setStyleSheet(R"PSCMP(
+            QDialog { background: #20252b; }
+            QLabel { color: #eff4f7; }
+            QLabel#psComparisonImage { background: #12171d; border: 1px solid #607381;
+                border-radius: 5px; padding: 6px; }
+            QPushButton { color: #f6f8fa; background: #364650;
+                border: 1px solid #63798b; padding: 6px 12px; border-radius: 4px; }
+        )PSCMP");
+        auto *layout = new QVBoxLayout(&dlg);
+        layout->setContentsMargins(14, 12, 14, 12);
+        auto *headingLabel = new QLabel(tr("ORIGINAL  /  CONVERTED OUTPUT"), &dlg);
+        QFont comparisonTitleFont = headingLabel->font();
+        comparisonTitleFont.setBold(true);
+        headingLabel->setFont(comparisonTitleFont);
+        layout->addWidget(headingLabel);
+        auto *columns = new QHBoxLayout();
+        columns->setSpacing(14);
+        layout->addLayout(columns, 1);
+
+        QLabel *originalImage = nullptr;
+        QLabel *exportedImage = nullptr;
+        QLabel *originalDetails = nullptr;
+        QLabel *exportedDetails = nullptr;
+        auto addPane = [&dlg, columns](const QString &name,
+                                       QLabel *&imageLabel, QLabel *&detailsLabel) {
+            auto *pane = new QVBoxLayout();
+            auto *paneTitle = new QLabel(name, &dlg);
+            pane->addWidget(paneTitle);
+            imageLabel = new QLabel(&dlg);
+            imageLabel->setObjectName("psComparisonImage");
+            imageLabel->setMinimumSize(240, 280);
+            imageLabel->setAlignment(Qt::AlignCenter);
+            imageLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            pane->addWidget(imageLabel, 1);
+            detailsLabel = new QLabel(&dlg);
+            detailsLabel->setWordWrap(true);
+            pane->addWidget(detailsLabel);
+            columns->addLayout(pane, 1);
+        };
+        addPane(tr("BEFORE | ORIGINAL"), originalImage, originalDetails);
+        addPane(tr("AFTER | EXPORTED FILE"), exportedImage, exportedDetails);
+
+        auto loadPane = [](const QString &path, QLabel *imageLabel, QLabel *detailsLabel,
+                           double *readDpiX, double *readDpiY) -> QSize {
+            if (readDpiX) *readDpiX = 0.0;
+            if (readDpiY) *readDpiY = 0.0;
+            QImageReader reader(path);
+            reader.setAutoTransform(true);
+            const QSize actualPixels = reader.size();
+            if (actualPixels.isValid())
+                reader.setScaledSize(actualPixels.scaled(420, 380, Qt::KeepAspectRatio));
+            const QImage preview = reader.read();
+            const QFileInfo file(path);
+            if (preview.isNull()) {
+                imageLabel->setText(QObject::tr("No Qt preview available for this format"));
+                detailsLabel->setText(file.fileName() + "\n" + reader.errorString());
+                return actualPixels;
+            }
+            imageLabel->setPixmap(QPixmap::fromImage(preview));
+            // Read physical resolution from the ACTUAL file, not from a downscaled
+            // Qt preview (which can report a misleading default of 96 DPI).
+            double embeddedX = 0.0;
+            double embeddedY = 0.0;
+            QString dpiLabel = QObject::tr("Embedded DPI: not specified");
+            try {
+                Magick::Image fileMetadata;
+                fileMetadata.ping(path.toStdString());
+                const auto units = fileMetadata.resolutionUnits();
+                const double toDpi = (units == Magick::PixelsPerCentimeterResolution)
+                    ? 2.54 : 1.0;
+                if (units == Magick::PixelsPerCentimeterResolution ||
+                    units == Magick::PixelsPerInchResolution) {
+                    embeddedX = fileMetadata.xResolution() * toDpi;
+                    embeddedY = fileMetadata.yResolution() * toDpi;
+                    if (embeddedX > 0.0 && embeddedY > 0.0) {
+                        dpiLabel = QObject::tr("Embedded print DPI: %1 × %2")
+                            .arg(qRound(embeddedX)).arg(qRound(embeddedY));
+                    }
+                }
+            } catch (const Magick::Exception &e) {
+                dpiLabel = QObject::tr("Embedded DPI unavailable: %1")
+                    .arg(QString::fromStdString(e.what()));
+            }
+            if (readDpiX) *readDpiX = embeddedX;
+            if (readDpiY) *readDpiY = embeddedY;
+            detailsLabel->setText(QObject::tr("%1\n%2 × %3 pixels  |  %4 MiB\n%5")
+                .arg(file.fileName())
+                .arg(actualPixels.width()).arg(actualPixels.height())
+                .arg(QString::number(file.size() / 1048576.0, 'f', 2))
+                .arg(dpiLabel));
+            return actualPixels;
+        };
+        const QSize originalSize = loadPane(originalPath, originalImage, originalDetails, nullptr, nullptr);
+        double psOutputDpiX = 0.0;
+        double psOutputDpiY = 0.0;
+        const QSize exportedSize = loadPane(exportedPath, exportedImage, exportedDetails,
+                                            &psOutputDpiX, &psOutputDpiY);
+
+        auto *summary = new QLabel(&dlg);
+        summary->setWordWrap(true);
+        if (originalSize.isValid() && exportedSize.isValid()) {
+            const double scaleX = static_cast<double>(exportedSize.width()) / originalSize.width();
+            const double scaleY = static_cast<double>(exportedSize.height()) / originalSize.height();
+            if (scaleX > 2.0 || scaleY > 2.0) {
+                summary->setText(QObject::tr("Upscaling: %1× width and %2× height. More pixels do not automatically create more fine detail.")
+                    .arg(QString::number(scaleX, 'f', 2))
+                    .arg(QString::number(scaleY, 'f', 2)));
+                summary->setStyleSheet("color: #ffd49c; font-weight: bold;");
+            } else {
+                summary->setText(QObject::tr("Viewing the actual converted image. Open the full-size export to inspect fine details at 100%."));
+            }
+        } else {
+            summary->setText(QObject::tr("Dimensions could not be read for one of the files."));
+        }
+        // Print verification uses the actual saved file's embedded units.
+        if (auto *studioPrintDpi = findChild<QCheckBox*>("psPrintDpi")) {
+            if (studioPrintDpi->isChecked()) {
+                if (auto *studioDpiValue = findChild<QSpinBox*>("psDpiValue")) {
+                    const int wanted = studioDpiValue->value();
+                    if (psOutputDpiX <= 0.0 || psOutputDpiY <= 0.0 ||
+                        qAbs(psOutputDpiX - wanted) > 2.0 ||
+                        qAbs(psOutputDpiY - wanted) > 2.0) {
+                        summary->setText(summary->text() +
+                            QObject::tr("\nWARNING: Export does not contain the expected %1 DPI metadata.")
+                                .arg(wanted));
+                        summary->setStyleSheet("color: #ffd49c; font-weight: bold;");
+                    } else {
+                        summary->setText(summary->text() +
+                            QObject::tr("\nPrint DPI verified: %1 × %2 DPI embedded in exported file.")
+                                .arg(qRound(psOutputDpiX)).arg(qRound(psOutputDpiY)));
+                    }
+                }
+            }
+        }
+        layout->addWidget(summary);
+        auto *buttons = new QHBoxLayout();
+        buttons->addStretch();
+        auto *openExport = new QPushButton(tr("Open exported file"), &dlg);
+        connect(openExport, &QPushButton::clicked, &dlg, [exportedPath]() {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(exportedPath));
+        });
+        buttons->addWidget(openExport);
+        auto *closeButton = new QPushButton(tr("Close"), &dlg);
+        connect(closeButton, &QPushButton::clicked, &dlg, &QDialog::accept);
+        buttons->addWidget(closeButton);
+        layout->addLayout(buttons);
+        dlg.exec();
+    });
+    auto *collapse = new QToolButton(panel);
+    collapse->setText(tr("Hide controls"));
+    collapse->setCheckable(true);
+    collapse->setChecked(true);
+    heading->addWidget(collapse);
+    root->addLayout(heading);
+
+    auto *tabs = new QTabWidget(panel);
+    tabs->setDocumentMode(true);
+    // Fill the full tab header width rather than leaving a white empty strip.
+    tabs->tabBar()->setExpanding(true);
+    root->addWidget(tabs);
+    connect(collapse, &QToolButton::toggled, this, [tabs, collapse](bool expanded) {
+        tabs->setVisible(expanded);
+        collapse->setText(expanded ? QObject::tr("Hide controls") : QObject::tr("Show controls"));
+    });
+
+    // Resize tab: exact pixel boxes, existing aspect-fit behavior, print DPI and filters.
+    auto *resizeTab = new QWidget(tabs);
+    resizeTab->setObjectName("psResizeTab");
+    auto *sizeGrid = new QGridLayout(resizeTab);
+    sizeGrid->setContentsMargins(8, 12, 8, 10);
+    sizeGrid->setHorizontalSpacing(14);
+    sizeGrid->setVerticalSpacing(10);
+    auto *preset = new QComboBox(resizeTab);
+    preset->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    preset->addItem(tr("Custom (use size below)"), QSize());
+    preset->addItem(tr("16 x 16 in  |  4800 x 4800"), QSize(4800, 4800));
+    preset->addItem(tr("16 x 20 in  |  4800 x 6000"), QSize(4800, 6000));
+    preset->addItem(tr("24 x 24 in  |  7200 x 7200"), QSize(7200, 7200));
+    preset->addItem(tr("24 x 30 in  |  7200 x 9000"), QSize(7200, 9000));
+    preset->addItem(tr("Web  |  600 x 600"), QSize(600, 600));
+    preset->addItem(tr("Web  |  2048 x 2048"), QSize(2048, 2048));
+    sizeGrid->addWidget(new QLabel(tr("Preset"), resizeTab), 0, 0);
+    sizeGrid->addWidget(preset, 0, 1, 1, 3);
+    auto *width = new QSpinBox(resizeTab);
+    auto *height = new QSpinBox(resizeTab);
+    for (auto *spin : {width, height}) {
+        spin->setRange(1, 100000);
+        spin->setSingleStep(100);
+        spin->setSuffix(tr(" px"));
+        spin->setMinimumWidth(120);
+    }
+    width->setValue(comboResizeValues->currentText() == "px" && spin_geoWidth->value() > 1
+                    ? qRound(spin_geoWidth->value()) : 2048);
+    height->setValue(comboResizeValues->currentText() == "px" && spin_geoHeight->value() > 1
+                     ? qRound(spin_geoHeight->value()) : 2048);
+    sizeGrid->addWidget(new QLabel(tr("Width"), resizeTab), 1, 0);
+    sizeGrid->addWidget(width, 1, 1);
+    sizeGrid->addWidget(new QLabel(tr("Height"), resizeTab), 1, 2);
+    sizeGrid->addWidget(height, 1, 3);
+    auto *keepAspect = new QCheckBox(tr("Keep aspect ratio (fit inside, no crop)"), resizeTab);
+    keepAspect->setChecked(checkRelative->isChecked());
+    sizeGrid->addWidget(keepAspect, 2, 0, 1, 4);
+
+    auto *filter = new QComboBox(resizeTab);
+    filter->addItem(tr("Automatic"), static_cast<int>(UndefinedFilter));
+    filter->addItem(tr("Lanczos - crisp detail"), static_cast<int>(LanczosFilter));
+    filter->addItem(tr("Mitchell - smooth edges"), static_cast<int>(MitchellFilter));
+    filter->addItem(tr("Catrom - sharp edges"), static_cast<int>(CatromFilter));
+    filter->addItem(tr("Triangle - soft"), static_cast<int>(TriangleFilter));
+    int currentFilter = filter->findData(static_cast<int>(m_resamplingFilter));
+    filter->setCurrentIndex(currentFilter >= 0 ? currentFilter : 0);
+    sizeGrid->addWidget(new QLabel(tr("Resize method"), resizeTab), 3, 0);
+    sizeGrid->addWidget(filter, 3, 1, 1, 3);
+    connect(filter, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, filter](int index) {
+        if (index >= 0)
+            m_resamplingFilter = static_cast<IMFilterType>(filter->itemData(index).toInt());
+    });
+
+    auto *printDpi = new QCheckBox(tr("Print resolution"), resizeTab);
+    printDpi->setObjectName("psPrintDpi");
+    printDpi->setChecked(groupResolution->isChecked());
+    auto *dpi = new QSpinBox(resizeTab);
+    dpi->setObjectName("psDpiValue");
+    dpi->setRange(72, 1200);
+    dpi->setValue(spin_resX->value() >= 72 ? qRound(spin_resX->value()) : 300);
+    dpi->setSuffix(tr(" DPI"));
+    dpi->setEnabled(printDpi->isChecked());
+    sizeGrid->addWidget(printDpi, 4, 0);
+    sizeGrid->addWidget(dpi, 4, 1);
+    auto *note = new QLabel(tr("Print presets use 300 DPI. Aspect-fit prevents stretching; output may not fill a different-shaped canvas."), resizeTab);
+    note->setWordWrap(true);
+    sizeGrid->addWidget(note, 5, 0, 1, 4);
+    sizeGrid->setColumnStretch(1, 1);
+    sizeGrid->setColumnStretch(3, 1);
+    tabs->addTab(resizeTab, tr("Resize"));
+
+    auto applySize = [this, width, height, keepAspect]() {
+        groupDimensions->setChecked(true);
+        comboResizeValues->setCurrentText("px"); // Native control resets size when units change.
+        checkRelative->setChecked(keepAspect->isChecked());
+        spin_geoWidth->setValue(width->value());
+        spin_geoHeight->setValue(height->value());
+        showNewSizePreview();
+    };
+    connect(width, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [applySize](int) { applySize(); });
+    connect(height, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [applySize](int) { applySize(); });
+    connect(keepAspect, &QCheckBox::toggled, this,
+            [applySize](bool) { applySize(); });
+    connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, preset, width, height, keepAspect, dpi, printDpi, applySize](int index) {
+        if (index < 1)
+            return;
+        const QSize target = preset->itemData(index).toSize();
+        if (!target.isValid())
+            return;
+        {
+            const QSignalBlocker blockWidth(width);
+            const QSignalBlocker blockHeight(height);
+            width->setValue(target.width());
+            height->setValue(target.height());
+        }
+        {
+            const QSignalBlocker blockAspect(keepAspect);
+            keepAspect->setChecked(true); // Presets fit the art without cropping/stretching.
+        }
+        const bool isPrint = index <= 4;
+        if (isPrint)
+            dpi->setValue(300);
+        printDpi->setChecked(isPrint);
+        applySize();
+        statusBar()->showMessage(tr("Preset applied. Choose a matching aspect ratio for exact canvas dimensions."), 7000);
+    });
+    connect(printDpi, &QCheckBox::toggled, this, [this, dpi](bool enabled) {
+        dpi->setEnabled(enabled);
+        groupResolution->setChecked(enabled);
+        if (enabled) {
+            spin_resX->setValue(dpi->value());
+            spin_resY->setValue(dpi->value());
+        }
+    });
+    connect(dpi, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this, printDpi](int value) {
+        if (printDpi->isChecked()) {
+            spin_resX->setValue(value);
+            spin_resY->setValue(value);
+        }
+    });
+
+    // Compress tab: Squoosh-style quality slider + exact value, opt-in.
+    auto *compressTab = new QWidget(tabs);
+    compressTab->setObjectName("psCompressTab");
+    auto *compressGrid = new QGridLayout(compressTab);
+    compressGrid->setContentsMargins(8, 12, 8, 10);
+    compressGrid->setHorizontalSpacing(14);
+    compressGrid->setVerticalSpacing(12);
+    auto *overrideQuality = new QCheckBox(tr("Use custom quality for JPEG / WebP"), compressTab);
+    auto *qualitySlider = new QSlider(Qt::Horizontal, compressTab);
+    auto *qualityNumber = new QSpinBox(compressTab);
+    qualitySlider->setRange(1, 100);
+    qualitySlider->setValue(m_psQuality);
+    qualityNumber->setRange(1, 100);
+    qualityNumber->setValue(m_psQuality);
+    qualityNumber->setMinimumWidth(75);
+    qualitySlider->setEnabled(false);
+    qualityNumber->setEnabled(false);
+    compressGrid->addWidget(overrideQuality, 0, 0, 1, 3);
+    compressGrid->addWidget(new QLabel(tr("Quality"), compressTab), 1, 0);
+    compressGrid->addWidget(qualitySlider, 1, 1);
+    compressGrid->addWidget(qualityNumber, 1, 2);
+    auto *compressHint = new QLabel(tr("Higher quality = more detail and larger files. PNG stays lossless. WebP switches to lossy when this override is on."), compressTab);
+    compressHint->setWordWrap(true);
+    compressGrid->addWidget(compressHint, 2, 0, 1, 3);
+    auto *advanced = new QPushButton(tr("Advanced compression / format settings..."), compressTab);
+    compressGrid->addWidget(advanced, 3, 0, 1, 3);
+    compressGrid->setColumnStretch(1, 1);
+    connect(overrideQuality, &QCheckBox::toggled, this, [this, qualitySlider, qualityNumber](bool on) {
+        m_psOverrideQuality = on;
+        qualitySlider->setEnabled(on);
+        qualityNumber->setEnabled(on);
+    });
+    connect(qualitySlider, &QSlider::valueChanged, qualityNumber, &QSpinBox::setValue);
+    connect(qualityNumber, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this, qualitySlider](int val) {
+        qualitySlider->setValue(val);
+        m_psQuality = val;
+    });
+    connect(advanced, &QPushButton::clicked, this, [this, filter]() {
+        setQuality();
+        const int idx = filter->findData(static_cast<int>(m_resamplingFilter));
+        if (idx >= 0) {
+            const QSignalBlocker b(filter);
+            filter->setCurrentIndex(idx);
+        }
+    });
+    tabs->addTab(compressTab, tr("Compress"));
+
+    // Enhance tab: independent subtle blur / detail sharpening, both off by default.
+    auto *enhanceTab = new QWidget(tabs);
+    enhanceTab->setObjectName("psEnhanceTab");
+    auto *enhanceGrid = new QGridLayout(enhanceTab);
+    enhanceGrid->setContentsMargins(8, 12, 8, 10);
+    enhanceGrid->setHorizontalSpacing(14);
+    enhanceGrid->setVerticalSpacing(12);
+    auto makeEnhancement = [this, enhanceTab, enhanceGrid](int row, const QString &label,
+                                                            const QString &help, bool smoothing) {
+        auto *caption = new QLabel(label, enhanceTab);
+        auto *slider = new QSlider(Qt::Horizontal, enhanceTab);
+        auto *number = new QDoubleSpinBox(enhanceTab);
+        slider->setRange(0, 20);
+        slider->setValue(0);
+        slider->setSingleStep(1);
+        number->setDecimals(1);
+        number->setRange(0.0, 2.0);
+        number->setSingleStep(0.1);
+        number->setValue(0.0);
+        number->setMinimumWidth(78);
+        slider->setToolTip(help);
+        number->setToolTip(help);
+        enhanceGrid->addWidget(caption, row, 0);
+        enhanceGrid->addWidget(slider, row, 1);
+        enhanceGrid->addWidget(number, row, 2);
+        connect(slider, &QSlider::valueChanged, this, [this, number, smoothing](int val) {
+            const double sigma = val / 10.0;
+            number->setValue(sigma);
+            if (smoothing) m_psSmoothSigma = sigma;
+            else m_psSharpenSigma = sigma;
+        });
+        connect(number, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+                [slider](double val) { slider->setValue(qRound(val * 10.0)); });
+    };
+    makeEnhancement(0, tr("Smoothing"), tr("Gaussian smoothing, 0 = off; try 0.2-0.4"), true);
+    makeEnhancement(1, tr("Sharpen"), tr("Sharpen after resizing, 0 = off; try 0.3-0.7"), false);
+    auto *enhanceHint = new QLabel(tr("Both are off at 0. Start gently: strong smoothing removes texture; strong sharpening adds halos."), enhanceTab);
+    enhanceHint->setWordWrap(true);
+    enhanceGrid->addWidget(enhanceHint, 2, 0, 1, 3);
+    enhanceGrid->setColumnStretch(1, 1);
+    tabs->addTab(enhanceTab, tr("Enhance"));
+
+    // Honor native advanced editing (e.g., if user changes existing resize fields).
+    connect(spin_geoWidth, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this, width](double value) {
+        if (comboResizeValues->currentText() != "px") return;
+        const QSignalBlocker b(width);
+        width->setValue(qMax(1, qRound(value)));
+    });
+    connect(spin_geoHeight, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this, height](double value) {
+        if (comboResizeValues->currentText() != "px") return;
+        const QSignalBlocker b(height);
+        height->setValue(qMax(1, qRound(value)));
+    });
+    connect(checkRelative, &QCheckBox::toggled, this, [keepAspect](bool on) {
+        const QSignalBlocker b(keepAspect);
+        keepAspect->setChecked(on);
+    });
+
+    // Avoid the compressed single-row toolbar seen in Phase 1.
+    verticalLayout_20->insertWidget(0, panel);
+
+    // Pixel Shroom Phase 3: hide the native Dimensions tab, not its widgets.
+    // Phase 2 deliberately updates groupDimensions, spin_geoWidth/Height,
+    // checkRelative, and groupResolution behind the scenes. Removing or
+    // disabling them could break the already-working conversion logic.
+    // Keep the Rotate and Flip page available in the Actions Panel.
+    const int nativeDimensionsTab = tabWidget->indexOf(tab);
+    const int rotateFlipTab = tabWidget->indexOf(tab_2);
+    if (nativeDimensionsTab >= 0 && rotateFlipTab >= 0) {
+        tabWidget->setCurrentIndex(rotateFlipTab);
+        tabWidget->setTabVisible(nativeDimensionsTab, false);
+        tabWidget->setTabText(rotateFlipTab, tr("Rotate / Flip"));
+    }
 }
 
 MainWindowImpl::~MainWindowImpl()
@@ -630,8 +1140,26 @@ void MainWindowImpl::startConversion()
         convertThread->setResize(width, height, percent, maintainAspectRatio);
     }
 
+    // Pixel Shroom Phase 5: use the visible DPI controls for EVERY batch.
+    // The native hidden spinboxes are reset to zero after the studio is built
+    // during MainWindowImpl construction. A checked DPI box does not emit a
+    // toggled signal again; sync it explicitly at the conversion boundary.
+    if (auto *studioPrintDpi = findChild<QCheckBox*>("psPrintDpi")) {
+        const bool printEnabled = studioPrintDpi->isChecked();
+        groupResolution->setChecked(printEnabled);
+        if (printEnabled) {
+            auto *studioDpiValue = findChild<QSpinBox*>("psDpiValue");
+            if (!studioDpiValue || studioDpiValue->value() < 72) {
+                QMessageBox::warning(this, tr("Invalid print DPI"),
+                                     tr("Choose a print resolution of at least 72 DPI."));
+                return;
+            }
+            spin_resX->setValue(studioDpiValue->value());
+            spin_resY->setValue(studioDpiValue->value());
+        }
+    }
     /* Change image density */
-    if ((groupResolution->isChecked()) && ((m_xResolution != spin_resX->value()) || (m_yResolution != spin_resY->value()))) {
+    if (groupResolution->isChecked()) {
         QString densStr = QString("%1x%2")
                               .arg(spin_resX->value())
                               .arg(spin_resY->value());
@@ -664,6 +1192,7 @@ void MainWindowImpl::startConversion()
     }
 
     convertThread->setResamplingFilter(m_resamplingFilter);
+    convertThread->setEnhancements(m_psSmoothSigma, m_psSharpenSigma);
 
     convert();
 
@@ -719,7 +1248,7 @@ void MainWindowImpl::convert()
             quality = m_webPQuality;
 
             // magick, key, value
-            magickDefines << MagickDefine("webp", "lossless", (m_isWebPLosslessCompression) ? "true" : "false");
+            magickDefines << MagickDefine("webp", "lossless", (m_psOverrideQuality ? "false" : (m_isWebPLosslessCompression ? "true" : "false")));
             magickDefines << MagickDefine("webp", "method", QString::number(m_webPCompression));
             magickDefines << MagickDefine("webp", "preprocessing", (m_iskWebPDithering) ? "1" : "0");
         }
@@ -733,6 +1262,9 @@ void MainWindowImpl::convert()
             magickDefines << MagickDefine("avif", "speed", "6");
             magickDefines << MagickDefine("heic", "chroma", "420");
         }
+
+        if (m_psOverrideQuality && (out_format == "jpg" || out_format == "jpeg" || out_format == "webp"))
+            quality = m_psQuality;
 
         convertThread->setInputPicture(inputFilename);
         convertThread->setFormat(out_format);

@@ -46,6 +46,8 @@ void Converter::reset()
     m_density = false;
     m_rotation = false;
     m_flip = false;
+    m_psSmoothSigma = 0.0;
+    m_psSharpenSigma = 0.0;
 }
 
 Converter::~Converter()
@@ -114,6 +116,19 @@ void Converter::run()
             rotate(my_image);
         if (m_flip)
             flip(my_image);
+
+        // Pixel Shroom: smoothing first, optional sharpening after resize.
+        // These operations default to disabled and never change input files.
+        try {
+            if (m_psSmoothSigma > 0.0)
+                my_image.blur(0.0, m_psSmoothSigma);
+            if (m_psSharpenSigma > 0.0)
+                my_image.sharpen(0.0, m_psSharpenSigma);
+        } catch (const Magick::Exception &error) {
+            m_conv_status = -1;
+            emit errorMessage(tr("Enhancement failed: %1").arg(QString::fromStdString(error.what())));
+            return;
+        }
 
         out = QDir::toNativeSeparators(out);
 
@@ -272,6 +287,12 @@ void Converter::setResamplingFilter(IMFilterType resamplingFilter)
     m_resamplingFilter = resamplingFilter;
 }
 
+void Converter::setEnhancements(double smoothSigma, double sharpenSigma)
+{
+    m_psSmoothSigma = smoothSigma > 0.0 ? smoothSigma : 0.0;
+    m_psSharpenSigma = sharpenSigma > 0.0 ? sharpenSigma : 0.0;
+}
+
 void Converter::setMagickDefines(const QList<MagickDefine> &magickDefines)
 {
     m_magickDefines = magickDefines;
@@ -328,7 +349,7 @@ bool Converter::writeImage(Image &my_image, const QString &format, const int &qu
         bgImg.size(Magick::Geometry(my_image.columns(), my_image.rows()));
 
         if (m_density) {
-            //bgImg.resolutionUnits(PixelsPerInchResolution);
+            bgImg.resolutionUnits(Magick::PixelsPerInchResolution);
             bgImg.density(m_densityString.toStdString());
         }
 
@@ -360,7 +381,7 @@ bool Converter::writeImage(Image &my_image, const QString &format, const int &qu
     }
 
     if (m_density) {
-        //my_image.resolutionUnits(PixelsPerInchResolution);
+        my_image.resolutionUnits(Magick::PixelsPerInchResolution);
         my_image.density(m_densityString.toStdString());
     }
 

@@ -44,7 +44,16 @@ DialogConversionStatus::DialogConversionStatus(QWidget *parent) :
     connect(menu, SIGNAL(triggered(QAction*)), this, SLOT(openDir(QAction*)));
     connect(actionOpenAllDirs, SIGNAL(triggered()), this, SLOT(openAllDirs()));
 
-    treeWidget->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    // Pixel Shroom: readable, separate columns for long artwork filenames.
+    setMinimumSize(640, 340);
+    resize(760, 420);
+    treeWidget->header()->setStretchLastSection(false);
+    treeWidget->header()->setMinimumSectionSize(105);
+    treeWidget->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    treeWidget->header()->setSectionResizeMode(1, QHeaderView::Fixed);
+    treeWidget->header()->resizeSection(1, 132);
+    treeWidget->setTextElideMode(Qt::ElideMiddle);
+    treeWidget->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 }
 
 void DialogConversionStatus::setup(int n_images)
@@ -84,6 +93,8 @@ void DialogConversionStatus::conversionStatus(int conv_status, QString fileName)
 
     item->setText(0, fileName);
     item->setText(1, m_msg);
+    item->setToolTip(0, fileName); // Hover to see a complete long name.
+    item->setToolTip(1, m_msg);
 
     if (wasAtBottom)
         treeWidget->scrollToBottom();

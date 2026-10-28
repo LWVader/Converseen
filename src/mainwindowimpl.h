@@ -73,6 +73,7 @@ private:
     void fillTreeView();
     void loadFormats();
     void loadOptions();
+    void setupPixelShroomControls();
     void loadQuality();
 
     void deleteItems(int selectedItems);
@@ -126,6 +127,12 @@ private:
     QString m_bgColor;
 
     IMFilterType m_resamplingFilter;
+
+    // Pixel Shroom opt-in enhancements (default: no behavior change).
+    bool m_psOverrideQuality = false;
+    int m_psQuality = 95;
+    double m_psSmoothSigma = 0.0;
+    double m_psSharpenSigma = 0.0;
 
 private slots:
     void dropped(QStringList fileNames, QStringList directories);

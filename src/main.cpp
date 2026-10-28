@@ -73,7 +73,7 @@ void restrictDllSearchPath()
 int main(int argc, char ** argv)
 {
 #if defined(Q_OS_WIN)
-    restrictDllSearchPath();
+    // restrictDllSearchPath();
 #endif
 
 	InitializeMagick(*argv);
@@ -136,11 +136,11 @@ int main(int argc, char ** argv)
     if (parser.isSet(winMagickPathOption))
         resdir = parser.value(winMagickPathOption);
 
-    qputenv("LD_LIBRARY_PATH", resdir.toUtf8());
-    qputenv("MAGICK_HOME", resdir.toUtf8());
-    qputenv("MAGICK_CONFIGURE_PATH", resdir.toUtf8());
-    qputenv("MAGICK_CODER_MODULE_PATH", resdir.toUtf8() + "\\modules\\coders");
-    qputenv("MAGICK_CODER_FILTER_PATH", resdir.toUtf8() + "\\modules\\filters");
+    // qputenv("LD_LIBRARY_PATH", resdir.toUtf8());
+    // qputenv("MAGICK_HOME", resdir.toUtf8());
+    // qputenv("MAGICK_CONFIGURE_PATH", resdir.toUtf8());
+    // qputenv("MAGICK_CODER_MODULE_PATH", resdir.toUtf8() + "\\modules\\coders");
+    // qputenv("MAGICK_CODER_FILTER_PATH", resdir.toUtf8() + "\\modules\\filters");
 #endif
 
     // Default traslations for Qt apps

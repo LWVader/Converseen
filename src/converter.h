@@ -64,6 +64,7 @@ public:
     void setOverwrite(OverwriteMode overwrite);
     void setNewBasename(QString newBaseName, bool ok);
     void setResamplingFilter(IMFilterType resamplingFilter);
+    void setEnhancements(double smoothSigma, double sharpenSigma);
     void setMagickDefines(const QList<MagickDefine> &magickDefines);
     void setRemoveMetadata(const bool &value);
     void stopProcess();
@@ -111,6 +112,8 @@ private:
     QWaitCondition imageCondition;
 
     IMFilterType m_resamplingFilter;
+    double m_psSmoothSigma = 0.0;
+    double m_psSharpenSigma = 0.0;
     QList<MagickDefine> m_magickDefines;
     bool m_removeMetadata;
 
