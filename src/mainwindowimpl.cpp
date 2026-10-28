@@ -35,6 +35,8 @@
 #include <QTabWidget>
 #include <QTabBar>
 #include <QDialog>
+#include "pixelshroom_phase6.h"
+#include "pixelshroom_phase7.h"
 #include <QImageReader>
 #include <QPixmap>
 #include <QFileInfo>
@@ -194,184 +196,38 @@ void MainWindowImpl::setupPixelShroomControls()
     title->setFont(titleFont);
     heading->addWidget(title, 1);
 
-    // Pixel Shroom Phase 4: compare the selected original with an actual exported image.
-    // This compares real files AFTER conversion, not a simulated encoder preview.
+    // Pixel Shroom Phase 6: synchronized zoom and live quality preview.
+    // Compare is the actual saved export, and preserves embedded-DPI verification.
     auto *compareOutput = new QPushButton(tr("Compare output..."), panel);
-    compareOutput->setToolTip(tr("Compare your selected input with an exported JPEG, PNG or WebP file."));
     heading->addWidget(compareOutput);
     connect(compareOutput, &QPushButton::clicked, this, [this]() {
-        const int selectedRow = treeWidget->currentIndex().row();
-        if (selectedRow < 0 || selectedRow >= iAList->size()) {
+        const int row = treeWidget->currentIndex().row();
+        if (row < 0 || row >= iAList->size()) {
             QMessageBox::information(this, tr("Choose an original"),
-                                     tr("Select an imported image in the list first."));
+                                     tr("Select an imported image first."));
             return;
         }
-        const QString originalPath = iAList->at(selectedRow).completeFileName;
+        const QString originalPath = iAList->at(row).completeFileName;
         if (!QFileInfo::exists(originalPath)) {
-            QMessageBox::warning(this, tr("Original unavailable"),
-                                 tr("The selected source file could not be found."));
+            QMessageBox::warning(this, tr("Missing image"), tr("Original image no longer exists."));
             return;
         }
-        const QString suggestedFolder = checkSameDir->isChecked()
+        QString folder = checkSameDir->isChecked()
             ? QFileInfo(originalPath).absolutePath() : lineDirectory->text();
+        folder = QDir::fromNativeSeparators(folder.trimmed());
+        if (!QDir(folder).exists()) folder = QFileInfo(originalPath).absolutePath();
         const QString exportedPath = QFileDialog::getOpenFileName(
-            this, tr("Select your converted image"), suggestedFolder,
+            this, tr("Select exported image"), folder,
             tr("Artwork (*.png *.jpg *.jpeg *.webp *.tif *.tiff);;All files (*.*)"));
-        if (exportedPath.isEmpty())
-            return;
-
-        QDialog dlg(this);
-        dlg.setWindowTitle(tr("Pixel Shroom | Compare original and output"));
-        dlg.resize(1010, 620);
-        dlg.setMinimumSize(720, 480);
-        dlg.setStyleSheet(R"PSCMP(
-            QDialog { background: #20252b; }
-            QLabel { color: #eff4f7; }
-            QLabel#psComparisonImage { background: #12171d; border: 1px solid #607381;
-                border-radius: 5px; padding: 6px; }
-            QPushButton { color: #f6f8fa; background: #364650;
-                border: 1px solid #63798b; padding: 6px 12px; border-radius: 4px; }
-        )PSCMP");
-        auto *layout = new QVBoxLayout(&dlg);
-        layout->setContentsMargins(14, 12, 14, 12);
-        auto *headingLabel = new QLabel(tr("ORIGINAL  /  CONVERTED OUTPUT"), &dlg);
-        QFont comparisonTitleFont = headingLabel->font();
-        comparisonTitleFont.setBold(true);
-        headingLabel->setFont(comparisonTitleFont);
-        layout->addWidget(headingLabel);
-        auto *columns = new QHBoxLayout();
-        columns->setSpacing(14);
-        layout->addLayout(columns, 1);
-
-        QLabel *originalImage = nullptr;
-        QLabel *exportedImage = nullptr;
-        QLabel *originalDetails = nullptr;
-        QLabel *exportedDetails = nullptr;
-        auto addPane = [&dlg, columns](const QString &name,
-                                       QLabel *&imageLabel, QLabel *&detailsLabel) {
-            auto *pane = new QVBoxLayout();
-            auto *paneTitle = new QLabel(name, &dlg);
-            pane->addWidget(paneTitle);
-            imageLabel = new QLabel(&dlg);
-            imageLabel->setObjectName("psComparisonImage");
-            imageLabel->setMinimumSize(240, 280);
-            imageLabel->setAlignment(Qt::AlignCenter);
-            imageLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-            pane->addWidget(imageLabel, 1);
-            detailsLabel = new QLabel(&dlg);
-            detailsLabel->setWordWrap(true);
-            pane->addWidget(detailsLabel);
-            columns->addLayout(pane, 1);
-        };
-        addPane(tr("BEFORE | ORIGINAL"), originalImage, originalDetails);
-        addPane(tr("AFTER | EXPORTED FILE"), exportedImage, exportedDetails);
-
-        auto loadPane = [](const QString &path, QLabel *imageLabel, QLabel *detailsLabel,
-                           double *readDpiX, double *readDpiY) -> QSize {
-            if (readDpiX) *readDpiX = 0.0;
-            if (readDpiY) *readDpiY = 0.0;
-            QImageReader reader(path);
-            reader.setAutoTransform(true);
-            const QSize actualPixels = reader.size();
-            if (actualPixels.isValid())
-                reader.setScaledSize(actualPixels.scaled(420, 380, Qt::KeepAspectRatio));
-            const QImage preview = reader.read();
-            const QFileInfo file(path);
-            if (preview.isNull()) {
-                imageLabel->setText(QObject::tr("No Qt preview available for this format"));
-                detailsLabel->setText(file.fileName() + "\n" + reader.errorString());
-                return actualPixels;
-            }
-            imageLabel->setPixmap(QPixmap::fromImage(preview));
-            // Read physical resolution from the ACTUAL file, not from a downscaled
-            // Qt preview (which can report a misleading default of 96 DPI).
-            double embeddedX = 0.0;
-            double embeddedY = 0.0;
-            QString dpiLabel = QObject::tr("Embedded DPI: not specified");
-            try {
-                Magick::Image fileMetadata;
-                fileMetadata.ping(path.toStdString());
-                const auto units = fileMetadata.resolutionUnits();
-                const double toDpi = (units == Magick::PixelsPerCentimeterResolution)
-                    ? 2.54 : 1.0;
-                if (units == Magick::PixelsPerCentimeterResolution ||
-                    units == Magick::PixelsPerInchResolution) {
-                    embeddedX = fileMetadata.xResolution() * toDpi;
-                    embeddedY = fileMetadata.yResolution() * toDpi;
-                    if (embeddedX > 0.0 && embeddedY > 0.0) {
-                        dpiLabel = QObject::tr("Embedded print DPI: %1 × %2")
-                            .arg(qRound(embeddedX)).arg(qRound(embeddedY));
-                    }
-                }
-            } catch (const Magick::Exception &e) {
-                dpiLabel = QObject::tr("Embedded DPI unavailable: %1")
-                    .arg(QString::fromStdString(e.what()));
-            }
-            if (readDpiX) *readDpiX = embeddedX;
-            if (readDpiY) *readDpiY = embeddedY;
-            detailsLabel->setText(QObject::tr("%1\n%2 × %3 pixels  |  %4 MiB\n%5")
-                .arg(file.fileName())
-                .arg(actualPixels.width()).arg(actualPixels.height())
-                .arg(QString::number(file.size() / 1048576.0, 'f', 2))
-                .arg(dpiLabel));
-            return actualPixels;
-        };
-        const QSize originalSize = loadPane(originalPath, originalImage, originalDetails, nullptr, nullptr);
-        double psOutputDpiX = 0.0;
-        double psOutputDpiY = 0.0;
-        const QSize exportedSize = loadPane(exportedPath, exportedImage, exportedDetails,
-                                            &psOutputDpiX, &psOutputDpiY);
-
-        auto *summary = new QLabel(&dlg);
-        summary->setWordWrap(true);
-        if (originalSize.isValid() && exportedSize.isValid()) {
-            const double scaleX = static_cast<double>(exportedSize.width()) / originalSize.width();
-            const double scaleY = static_cast<double>(exportedSize.height()) / originalSize.height();
-            if (scaleX > 2.0 || scaleY > 2.0) {
-                summary->setText(QObject::tr("Upscaling: %1× width and %2× height. More pixels do not automatically create more fine detail.")
-                    .arg(QString::number(scaleX, 'f', 2))
-                    .arg(QString::number(scaleY, 'f', 2)));
-                summary->setStyleSheet("color: #ffd49c; font-weight: bold;");
-            } else {
-                summary->setText(QObject::tr("Viewing the actual converted image. Open the full-size export to inspect fine details at 100%."));
-            }
-        } else {
-            summary->setText(QObject::tr("Dimensions could not be read for one of the files."));
-        }
-        // Print verification uses the actual saved file's embedded units.
-        if (auto *studioPrintDpi = findChild<QCheckBox*>("psPrintDpi")) {
-            if (studioPrintDpi->isChecked()) {
-                if (auto *studioDpiValue = findChild<QSpinBox*>("psDpiValue")) {
-                    const int wanted = studioDpiValue->value();
-                    if (psOutputDpiX <= 0.0 || psOutputDpiY <= 0.0 ||
-                        qAbs(psOutputDpiX - wanted) > 2.0 ||
-                        qAbs(psOutputDpiY - wanted) > 2.0) {
-                        summary->setText(summary->text() +
-                            QObject::tr("\nWARNING: Export does not contain the expected %1 DPI metadata.")
-                                .arg(wanted));
-                        summary->setStyleSheet("color: #ffd49c; font-weight: bold;");
-                    } else {
-                        summary->setText(summary->text() +
-                            QObject::tr("\nPrint DPI verified: %1 × %2 DPI embedded in exported file.")
-                                .arg(qRound(psOutputDpiX)).arg(qRound(psOutputDpiY)));
-                    }
-                }
-            }
-        }
-        layout->addWidget(summary);
-        auto *buttons = new QHBoxLayout();
-        buttons->addStretch();
-        auto *openExport = new QPushButton(tr("Open exported file"), &dlg);
-        connect(openExport, &QPushButton::clicked, &dlg, [exportedPath]() {
-            QDesktopServices::openUrl(QUrl::fromLocalFile(exportedPath));
-        });
-        buttons->addWidget(openExport);
-        auto *closeButton = new QPushButton(tr("Close"), &dlg);
-        connect(closeButton, &QPushButton::clicked, &dlg, &QDialog::accept);
-        buttons->addWidget(closeButton);
-        layout->addLayout(buttons);
-        dlg.exec();
+        if (exportedPath.isEmpty()) return;
+        auto *print = findChild<QCheckBox*>("psPrintDpi");
+        auto *dpi = findChild<QSpinBox*>("psDpiValue");
+        const int requested = print && print->isChecked() && dpi ? dpi->value() : 0;
+        PixelShroomPhase6::compare(this, originalPath, exportedPath, requested);
     });
+    auto *previewButton = new QPushButton(tr("Live preview..."), panel);
+    previewButton->setToolTip(tr("Preview smoothing, sharpening and JPEG/WebP compression before export."));
+    heading->addWidget(previewButton);
     auto *collapse = new QToolButton(panel);
     collapse->setText(tr("Hide controls"));
     collapse->setCheckable(true);
@@ -515,53 +371,184 @@ void MainWindowImpl::setupPixelShroomControls()
         }
     });
 
-    // Compress tab: Squoosh-style quality slider + exact value, opt-in.
+    // Pixel Shroom Phase 7: unified output settings and modeless live preview.
+    // For JPEG, PNG and WebP, this is the single visible settings surface.
+    // Other formats keep Converseen's original dialog for specialist settings.
     auto *compressTab = new QWidget(tabs);
     compressTab->setObjectName("psCompressTab");
     auto *compressGrid = new QGridLayout(compressTab);
     compressGrid->setContentsMargins(8, 12, 8, 10);
     compressGrid->setHorizontalSpacing(14);
-    compressGrid->setVerticalSpacing(12);
-    auto *overrideQuality = new QCheckBox(tr("Use custom quality for JPEG / WebP"), compressTab);
+    compressGrid->setVerticalSpacing(10);
+    auto *formatLabel = new QLabel(tr("Image format: choose it in 'Convert to' below"), compressTab);
+    formatLabel->setWordWrap(true);
+    compressGrid->addWidget(formatLabel, 0, 0, 1, 3);
+
+    auto *overrideQuality = new QCheckBox(tr("Set custom JPEG / WebP quality"), compressTab);
+    overrideQuality->setObjectName("psOverrideQuality");
+    overrideQuality->setChecked(m_psOverrideQuality);
+    compressGrid->addWidget(overrideQuality, 1, 0, 1, 3);
+    auto *qualityLabel = new QLabel(tr("Quality"), compressTab);
     auto *qualitySlider = new QSlider(Qt::Horizontal, compressTab);
     auto *qualityNumber = new QSpinBox(compressTab);
+    qualityNumber->setObjectName("psQualityNumber");
     qualitySlider->setRange(1, 100);
-    qualitySlider->setValue(m_psQuality);
     qualityNumber->setRange(1, 100);
-    qualityNumber->setValue(m_psQuality);
     qualityNumber->setMinimumWidth(75);
-    qualitySlider->setEnabled(false);
-    qualityNumber->setEnabled(false);
-    compressGrid->addWidget(overrideQuality, 0, 0, 1, 3);
-    compressGrid->addWidget(new QLabel(tr("Quality"), compressTab), 1, 0);
-    compressGrid->addWidget(qualitySlider, 1, 1);
-    compressGrid->addWidget(qualityNumber, 1, 2);
-    auto *compressHint = new QLabel(tr("Higher quality = more detail and larger files. PNG stays lossless. WebP switches to lossy when this override is on."), compressTab);
-    compressHint->setWordWrap(true);
-    compressGrid->addWidget(compressHint, 2, 0, 1, 3);
-    auto *advanced = new QPushButton(tr("Advanced compression / format settings..."), compressTab);
-    compressGrid->addWidget(advanced, 3, 0, 1, 3);
+    qualitySlider->setValue(m_psQuality);
+    qualityNumber->setValue(m_psQuality);
+    compressGrid->addWidget(qualityLabel, 2, 0);
+    compressGrid->addWidget(qualitySlider, 2, 1);
+    compressGrid->addWidget(qualityNumber, 2, 2);
+    auto *qualityHint = new QLabel(tr("Higher quality keeps more detail but creates larger files."), compressTab);
+    qualityHint->setWordWrap(true);
+    compressGrid->addWidget(qualityHint, 3, 0, 1, 3);
+
+    auto *pngLabel = new QLabel(tr("PNG compression"), compressTab);
+    auto *pngSlider = new QSlider(Qt::Horizontal, compressTab);
+    auto *pngNumber = new QSpinBox(compressTab);
+    pngSlider->setRange(0, 9);
+    pngNumber->setRange(0, 9);
+    pngSlider->setValue(qBound(0, m_pngQuality, 9));
+    pngNumber->setValue(qBound(0, m_pngQuality, 9));
+    compressGrid->addWidget(pngLabel, 4, 0);
+    compressGrid->addWidget(pngSlider, 4, 1);
+    compressGrid->addWidget(pngNumber, 4, 2);
+    auto *pngHint = new QLabel(tr("PNG is lossless. 0 = fast, 9 = stronger compression; image detail stays the same."), compressTab);
+    pngHint->setWordWrap(true);
+    compressGrid->addWidget(pngHint, 5, 0, 1, 3);
+
+    auto *webpLossless = new QCheckBox(tr("WebP lossless (preserve all pixels)"), compressTab);
+    webpLossless->setChecked(m_isWebPLosslessCompression);
+    compressGrid->addWidget(webpLossless, 6, 0, 1, 3);
+    auto *effortLabel = new QLabel(tr("WebP compression effort"), compressTab);
+    auto *effortSlider = new QSlider(Qt::Horizontal, compressTab);
+    auto *effortNumber = new QSpinBox(compressTab);
+    effortSlider->setRange(0, 6);
+    effortNumber->setRange(0, 6);
+    effortSlider->setValue(qBound(0, m_webPCompression, 6));
+    effortNumber->setValue(qBound(0, m_webPCompression, 6));
+    compressGrid->addWidget(effortLabel, 7, 0);
+    compressGrid->addWidget(effortSlider, 7, 1);
+    compressGrid->addWidget(effortNumber, 7, 2);
+    auto *effortHint = new QLabel(tr("Higher effort may create smaller WebP files but takes longer."), compressTab);
+    effortHint->setWordWrap(true);
+    compressGrid->addWidget(effortHint, 8, 0, 1, 3);
+    auto *dithering = new QCheckBox(tr("WebP dithering / preprocessing"), compressTab);
+    dithering->setChecked(m_iskWebPDithering);
+    compressGrid->addWidget(dithering, 9, 0, 1, 3);
+    auto *metadata = new QCheckBox(tr("Remove source metadata (includes profile information)"), compressTab);
+    metadata->setChecked(m_removeMetadata);
+    metadata->setToolTip(tr("Removes source metadata. Verify the final DPI and color profile for print exports."));
+    compressGrid->addWidget(metadata, 10, 0, 1, 3);
+    auto *otherHint = new QLabel(tr("For this uncommon output format, use the 'Image settings' button below."), compressTab);
+    otherHint->setWordWrap(true);
+    compressGrid->addWidget(otherHint, 11, 0, 1, 3);
     compressGrid->setColumnStretch(1, 1);
-    connect(overrideQuality, &QCheckBox::toggled, this, [this, qualitySlider, qualityNumber](bool on) {
-        m_psOverrideQuality = on;
-        qualitySlider->setEnabled(on);
-        qualityNumber->setEnabled(on);
-    });
+    tabs->addTab(compressTab, tr("Compress"));
+
     connect(qualitySlider, &QSlider::valueChanged, qualityNumber, &QSpinBox::setValue);
     connect(qualityNumber, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            [this, qualitySlider](int val) {
-        qualitySlider->setValue(val);
-        m_psQuality = val;
+            [this, qualitySlider](int value) {
+        qualitySlider->setValue(value);
+        m_psQuality = value;
     });
-    connect(advanced, &QPushButton::clicked, this, [this, filter]() {
-        setQuality();
-        const int idx = filter->findData(static_cast<int>(m_resamplingFilter));
-        if (idx >= 0) {
-            const QSignalBlocker b(filter);
-            filter->setCurrentIndex(idx);
+    connect(overrideQuality, &QCheckBox::toggled, this, [this](bool on) {
+        m_psOverrideQuality = on;
+    });
+    connect(pngSlider, &QSlider::valueChanged, pngNumber, &QSpinBox::setValue);
+    connect(pngNumber, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this, pngSlider](int value) {
+        pngSlider->setValue(value);
+        m_pngQuality = value;
+        IniSettings::setPngQuality(value);
+    });
+    connect(effortSlider, &QSlider::valueChanged, effortNumber, &QSpinBox::setValue);
+    connect(effortNumber, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this, effortSlider](int value) {
+        effortSlider->setValue(value);
+        m_webPCompression = value;
+        IniSettings::setWebPCompression(value);
+    });
+    connect(dithering, &QCheckBox::toggled, this, [this](bool on) {
+        m_iskWebPDithering = on;
+        IniSettings::setIskWebPDithering(on);
+    });
+    connect(metadata, &QCheckBox::toggled, this, [this](bool on) {
+        m_removeMetadata = on;
+        IniSettings::setIsRemoveMetadata(on);
+    });
+
+    // The Phase 1 converter forces lossy WebP when overriding quality;
+    // keep the two controls mutually exclusive so the UI is always truthful.
+    connect(webpLossless, &QCheckBox::toggled, this, [this, overrideQuality](bool on) {
+        m_isWebPLosslessCompression = on;
+        IniSettings::setIsWebPLosslessCompression(on);
+        if (on) overrideQuality->setChecked(false);
+    });
+    connect(overrideQuality, &QCheckBox::toggled, this, [webpLossless](bool on) {
+        if (on && webpLossless->isVisible() && webpLossless->isChecked())
+            webpLossless->setChecked(false);
+    });
+
+    // One codec-specific UI. Keep native settings for OTHER formats only.
+    auto selectedCodec = [this]() -> QString {
+        QString codec;
+        if (comboWFormats->currentIndex() == 0) {
+            const int row = treeWidget->currentIndex().row();
+            if (row >= 0 && row < iAList->size())
+                codec = QFileInfo(iAList->at(row).completeFileName).suffix().toLower();
+        } else {
+            codec = comboWFormats->currentText().split(" - ").first().trimmed().toLower();
         }
-    });
-    tabs->addTab(compressTab, tr("Compress"));
+        if (codec == "jpg" || codec == "jfif") codec = "jpeg";
+        if (codec == "png24" || codec == "png32" || codec == "png8") codec = "png";
+        return codec;
+    };
+    auto updateCodecUi = [this, selectedCodec, formatLabel, overrideQuality, qualityLabel,
+                          qualitySlider, qualityNumber, qualityHint, pngLabel, pngSlider,
+                          pngNumber, pngHint, webpLossless, effortLabel, effortSlider,
+                          effortNumber, effortHint, dithering, metadata, otherHint]() {
+        const QString codec = selectedCodec();
+        const bool jpeg = codec == "jpeg";
+        const bool png = codec == "png";
+        const bool webp = codec == "webp";
+        const bool managed = jpeg || png || webp;
+        // A previous JPEG override must not silently switch a lossless WebP preset to lossy.
+        if (webp && webpLossless->isChecked() && overrideQuality->isChecked())
+            overrideQuality->setChecked(false);
+        formatLabel->setText(managed
+          ? QObject::tr("%1 output — controls below apply to the entire batch.").arg(codec.toUpper())
+          : QObject::tr("Choose JPEG, PNG or WebP in 'Convert to' for simple settings."));
+        overrideQuality->setVisible(jpeg || webp);
+        const bool lossyQuality = (jpeg || webp) && !(webp && webpLossless->isChecked());
+        qualityLabel->setVisible(lossyQuality);
+        qualitySlider->setVisible(lossyQuality);
+        qualityNumber->setVisible(lossyQuality);
+        qualityHint->setVisible(lossyQuality);
+        qualitySlider->setEnabled(overrideQuality->isChecked());
+        qualityNumber->setEnabled(overrideQuality->isChecked());
+        pngLabel->setVisible(png);
+        pngSlider->setVisible(png);
+        pngNumber->setVisible(png);
+        pngHint->setVisible(png);
+        webpLossless->setVisible(webp);
+        effortLabel->setVisible(webp);
+        effortSlider->setVisible(webp);
+        effortNumber->setVisible(webp);
+        effortHint->setVisible(webp);
+        dithering->setVisible(webp);
+        metadata->setVisible(managed);
+        otherHint->setVisible(!managed);
+        btnFormatOptions->setVisible(!managed);
+        btnFormatOptions->setToolTip(QObject::tr("Advanced image settings for additional formats"));
+    };
+    connect(comboWFormats, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [updateCodecUi](int) { updateCodecUi(); });
+    connect(treeWidget, &QTreeWidget::itemSelectionChanged, this, updateCodecUi);
+    connect(overrideQuality, &QCheckBox::toggled, this, [updateCodecUi](bool) { updateCodecUi(); });
+    connect(webpLossless, &QCheckBox::toggled, this, [updateCodecUi](bool) { updateCodecUi(); });
+    updateCodecUi();
 
     // Enhance tab: independent subtle blur / detail sharpening, both off by default.
     auto *enhanceTab = new QWidget(tabs);
@@ -575,6 +562,7 @@ void MainWindowImpl::setupPixelShroomControls()
         auto *caption = new QLabel(label, enhanceTab);
         auto *slider = new QSlider(Qt::Horizontal, enhanceTab);
         auto *number = new QDoubleSpinBox(enhanceTab);
+        number->setObjectName(smoothing ? "psSmoothNumber" : "psSharpenNumber");
         slider->setRange(0, 20);
         slider->setValue(0);
         slider->setSingleStep(1);
@@ -622,6 +610,75 @@ void MainWindowImpl::setupPixelShroomControls()
         const QSignalBlocker b(keepAspect);
         keepAspect->setChecked(on);
     });
+
+    // Phase 7: Live Preview has NO extra adjustment controls. Main Studio is
+    // the source of truth; the separate window updates whenever Studio changes.
+    auto refreshPreview = [this, width, height, keepAspect, selectedCodec]() {
+        auto *window = findChild<PixelShroomPhase7::PreviewWindow*>("psStudioLivePreview");
+        if (!window) return;
+        const QString codec = selectedCodec();
+        const int nativeQuality = codec == "webp" ? m_webPQuality : m_jpgQuality;
+        const int selectedQuality = m_psOverrideQuality ? m_psQuality : nativeQuality;
+        window->setParameters(QSize(width->value(), height->value()), keepAspect->isChecked(),
+                              codec, m_psOverrideQuality, qBound(1, selectedQuality, 100),
+                              m_psSmoothSigma, m_psSharpenSigma, m_isWebPLosslessCompression,
+                              m_pngQuality, m_webPCompression, m_iskWebPDithering);
+    };
+    connect(previewButton, &QPushButton::clicked, this,
+            [this, refreshPreview]() {
+        const int row = treeWidget->currentIndex().row();
+        if (row < 0 || row >= iAList->size()) {
+            QMessageBox::information(this, tr("Choose an image"),
+                                     tr("Select an imported image first."));
+            return;
+        }
+        const QString source = QFileInfo(iAList->at(row).completeFileName).absoluteFilePath();
+        if (!QFileInfo(source).isFile()) {
+            QMessageBox::warning(this, tr("Missing source"), tr("The selected original no longer exists:\n%1").arg(source));
+            return;
+        }
+        auto *window = findChild<PixelShroomPhase7::PreviewWindow*>("psStudioLivePreview");
+        if (!window) {
+            window = new PixelShroomPhase7::PreviewWindow(this);
+            window->setObjectName("psStudioLivePreview");
+            window->setAttribute(Qt::WA_DeleteOnClose);
+        }
+        if (!window->openSource(source)) {
+            window->close();
+            return;
+        }
+        refreshPreview();
+        window->show();
+        window->raise();
+        window->activateWindow();
+    });
+    // Keep preview in sync with all user-visible Studio settings.
+    auto whenChanged = [refreshPreview]() { refreshPreview(); };
+    connect(width, QOverload<int>::of(&QSpinBox::valueChanged), this, [whenChanged](int) { whenChanged(); });
+    connect(height, QOverload<int>::of(&QSpinBox::valueChanged), this, [whenChanged](int) { whenChanged(); });
+    connect(keepAspect, &QCheckBox::toggled, this, [whenChanged](bool) { whenChanged(); });
+    connect(comboWFormats, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [whenChanged](int) { whenChanged(); });
+    connect(qualityNumber, QOverload<int>::of(&QSpinBox::valueChanged), this, [whenChanged](int) { whenChanged(); });
+    connect(overrideQuality, &QCheckBox::toggled, this, [whenChanged](bool) { whenChanged(); });
+    connect(webpLossless, &QCheckBox::toggled, this, [whenChanged](bool) { whenChanged(); });
+    connect(pngNumber, QOverload<int>::of(&QSpinBox::valueChanged), this, [whenChanged](int) { whenChanged(); });
+    connect(effortNumber, QOverload<int>::of(&QSpinBox::valueChanged), this, [whenChanged](int) { whenChanged(); });
+    connect(dithering, &QCheckBox::toggled, this, [whenChanged](bool) { whenChanged(); });
+    connect(treeWidget, &QTreeWidget::itemSelectionChanged, this, [this, refreshPreview]() {
+        auto *window = findChild<PixelShroomPhase7::PreviewWindow*>("psStudioLivePreview");
+        if (!window) return;
+        const int row = treeWidget->currentIndex().row();
+        if (row >= 0 && row < iAList->size() &&
+            window->openSource(QFileInfo(iAList->at(row).completeFileName).absoluteFilePath()))
+            refreshPreview();
+    });
+    if (auto *smoothWidget = findChild<QDoubleSpinBox*>("psSmoothNumber"))
+        connect(smoothWidget, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                this, [whenChanged](double) { whenChanged(); });
+    if (auto *sharpenWidget = findChild<QDoubleSpinBox*>("psSharpenNumber"))
+        connect(sharpenWidget, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+                this, [whenChanged](double) { whenChanged(); });
 
     // Avoid the compressed single-row toolbar seen in Phase 1.
     verticalLayout_20->insertWidget(0, panel);
