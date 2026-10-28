@@ -29,7 +29,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>Converseen</string>
+   <string>Pixel Shroom Image Studio</string>
   </property>
   <property name="windowIcon">
    <iconset resource="../resources.qrc">

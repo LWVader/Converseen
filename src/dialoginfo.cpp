@@ -31,6 +31,9 @@
 DialogInfo::DialogInfo(QWidget *parent) :
     QDialog(parent){
     setupUi(this);
+    // PIXEL SHROOM BRANDING 8.1: original-project credits remain in the About dialog.
+    pushFacebook->hide();
+    pushDonatePayPal->hide();
 
     connect(pushClose, SIGNAL(clicked()), this, SLOT(close()));
     connect(pushFacebook, SIGNAL(clicked()), this, SLOT(openFacebookPage()));
@@ -48,7 +51,7 @@ DialogInfo::DialogInfo(QWidget *parent) :
     appVersion = QCoreApplication::applicationVersion();
 #endif
 
-    QString title = QString("<p><span style=\" font-size:12pt; font-weight:600;\">Converseen %1</span><br />"
+    QString title = QString("<p><span style=\" font-size:12pt; font-weight:600;\">Pixel Shroom Image Studio %1</span><br />"
                             "<span style=\" font-size:10pt;\">%2</span></p>")
             .arg(appVersion)
             .arg(tr("The batch image converter and resizer."));
@@ -67,76 +70,54 @@ DialogInfo::DialogInfo(QWidget *parent) :
                                    .arg(QT_VERSION_STR);
     labelQtVersion->setText(qt_versionString);
 
-    // This section generates a Text + Png pixmap icon for the donation button!
 
-    QString donateText = tr("Make a Donation!");
-    QString donateDescriptionText = tr("Donate using PayPal, Ko-Fi or Cryptocurrencies.");
+    // PIXEL SHROOM ABOUT SCREEN 8.2: override legacy About text without changing conversion logic.
+    setWindowTitle(QStringLiteral("About Pixel Shroom Image Studio"));
+    QString psTitle = labelTitle->text();
+    psTitle.replace(QStringLiteral("Converseen"), QStringLiteral("Pixel Shroom Image Studio"));
+    labelTitle->setText(psTitle);
+    label_3->setText(QStringLiteral(
+        "Batch image processing for print and web: resize, compress, enhance, and compare images."));
+    groupBox->setTitle(QStringLiteral("Publisher and open-source credits"));
+    label->setText(QStringLiteral(
+        "<p><b>Customized and maintained by:</b> Pixel Shroom Studio<br>"
+        "<b>Official website:</b> <a href='https://www.pixelshroomstudio.com/'>pixelshroomstudio.com</a></p>"
+        "<p><b>Open-source foundation:</b> Built from <a href='https://github.com/Faster3ck/Converseen'>Converseen</a> "
+        "by Francesco Mondello, with contributions from its open-source community.</p>"));
+    label->setOpenExternalLinks(true);
+    label->setWordWrap(true);
+    label_2->setText(QStringLiteral(
+        "Pixel Shroom Studio modifications (c) 2026. "
+        "Converseen (c) 2009-2026 Francesco Mondello. "
+        "GNU GPL v3 or later. Original project credits and license remain applicable."));
+    label_2->setWordWrap(true);
 
-    QString htmlDonationText = QString(R"(
-        <style>
-            table {
-                border-collapse: collapse;
-            }
-            td {
-                text-align: center;
-                vertical-align: middle;
-                padding: 5px;
-            }
-        </style>
+    // Retire upstream-specific donation and social areas; original contributions stay credited.
+    label_18->hide();
+    pushDonatePayPal->hide();
+    label_7->hide();
+    pushFacebook->hide();
+    line_2->hide();
+    line->hide();
+    label_6->hide();
+    scrollArea->hide();
 
-        <table>
-            <tr>
-                <td><img src=':/Images/res/heart.png' width='52' height='52'></td>
-                <td>
-                    <span style='font-weight: bold; font-size:18pt; text-align: center;'>%1</span><br />
-                    <span style='font-style: italic; font-size:8pt; text-align: center;'>%2</span>
-                </td>
-            </tr>
-        </table>
-    )")
-    .arg(donateText, donateDescriptionText);
-
-    QTextDocument donateHtmlText;
-    donateHtmlText.setHtml(htmlDonationText);
-    donateHtmlText.setUseDesignMetrics(true);
-    donateHtmlText.setDefaultFont(QFont("Arial", -1, QFont::Normal));
-
-    QPixmap pixmapDonationText(donateHtmlText.size().width(), donateHtmlText.size().height());
-    pixmapDonationText.fill( Qt::transparent );
-
-    QPainter painter( &pixmapDonationText );
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setRenderHint(QPainter::TextAntialiasing, true);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-
-    donateHtmlText.drawContents(&painter, pixmapDonationText.rect());
-
-    QIcon donateButtonIcon(pixmapDonationText);
-    pushDonatePayPal->setIcon(donateButtonIcon);
-    pushDonatePayPal->setIconSize(pixmapDonationText.rect().size());
-    pushDonatePayPal->setStyleSheet(
-        "QPushButton { "
-            "background-color: transparent; "
-            "border: none; "
-        "} "
-            "QPushButton:hover { "
-            "background-color: rgba(200, 200, 200, 30); "
-        "} "
-            "QPushButton:pressed { "
-            "background-color: rgba(150, 150, 150, 50); "
-        "}"
-    );
-
+    // Keep the custom mushroom logo crisp and compact on the About screen.
+    const QPixmap psLogo(QStringLiteral(":/Images/res/icon.png"));
+    if (!psLogo.isNull()) {
+        label_5->setPixmap(psLogo.scaled(88, 88, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        label_5->setFixedSize(88, 88);
+    }
     adjustSize();
-    this->resize(512, 800);
+    resize(680, 400);
 }
 
 void DialogInfo::openFacebookPage()
 {
-    QDesktopServices::openUrl(QUrl("https://www.facebook.com/converseen", QUrl::TolerantMode));
+    // Retired upstream action in Pixel Shroom Image Studio.
 }
 
 void DialogInfo::on_pushDonatePayPal_clicked()
 {
-    QDesktopServices::openUrl(QUrl("https://converseen.fasterland.net/donate/", QUrl::TolerantMode));
+    // Retired upstream action in Pixel Shroom Image Studio.
 }

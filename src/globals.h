@@ -40,9 +40,9 @@ using namespace std;
 
 namespace globals
 {
-    const QString PROGRAM_NAME = "Converseen";
+    const QString PROGRAM_NAME = "Pixel Shroom Image Studio";
     const int CURRENT_INTERNAL_VERSION = 1629;
-    const QString VERSION = "0.15.2.9";
+    const QString VERSION = "1.0.0";
 
     class Globals
     {

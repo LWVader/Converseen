@@ -7,3 +7,9 @@ converseen.pro.user
 build/
 .qtcreator/
 !package/AppImage/build/
+
+# Pixel Shroom local development and build files
+/Inno Setup 7/
+/build/
+/build-portable/
+/dist/

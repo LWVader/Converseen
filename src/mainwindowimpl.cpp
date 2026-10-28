@@ -74,6 +74,8 @@ MainWindowImpl::MainWindowImpl(QWidget * parent)
     : QMainWindow(parent)
 {
     setupUi(this);
+    // PIXEL SHROOM BRANDING 8.1: hide original upstream donation action.
+    actionDonatePaypal->setVisible(false);
 
     iAList = new QList<ImageAttributes>;
     convertThread = new Converter(this);
@@ -614,7 +616,7 @@ void MainWindowImpl::setupPixelShroomControls()
     // Phase 7: Live Preview has NO extra adjustment controls. Main Studio is
     // the source of truth; the separate window updates whenever Studio changes.
     auto refreshPreview = [this, width, height, keepAspect, selectedCodec]() {
-        auto *window = findChild<PixelShroomPhase7::PreviewWindow*>("psStudioLivePreview");
+        auto *window = dynamic_cast<PixelShroomPhase7::PreviewWindow*>(findChild<QWidget*>("psStudioLivePreview"));
         if (!window) return;
         const QString codec = selectedCodec();
         const int nativeQuality = codec == "webp" ? m_webPQuality : m_jpgQuality;
@@ -637,7 +639,7 @@ void MainWindowImpl::setupPixelShroomControls()
             QMessageBox::warning(this, tr("Missing source"), tr("The selected original no longer exists:\n%1").arg(source));
             return;
         }
-        auto *window = findChild<PixelShroomPhase7::PreviewWindow*>("psStudioLivePreview");
+        auto *window = dynamic_cast<PixelShroomPhase7::PreviewWindow*>(findChild<QWidget*>("psStudioLivePreview"));
         if (!window) {
             window = new PixelShroomPhase7::PreviewWindow(this);
             window->setObjectName("psStudioLivePreview");
@@ -666,7 +668,7 @@ void MainWindowImpl::setupPixelShroomControls()
     connect(effortNumber, QOverload<int>::of(&QSpinBox::valueChanged), this, [whenChanged](int) { whenChanged(); });
     connect(dithering, &QCheckBox::toggled, this, [whenChanged](bool) { whenChanged(); });
     connect(treeWidget, &QTreeWidget::itemSelectionChanged, this, [this, refreshPreview]() {
-        auto *window = findChild<PixelShroomPhase7::PreviewWindow*>("psStudioLivePreview");
+        auto *window = dynamic_cast<PixelShroomPhase7::PreviewWindow*>(findChild<QWidget*>("psStudioLivePreview"));
         if (!window) return;
         const int row = treeWidget->currentIndex().row();
         if (row >= 0 && row < iAList->size() &&
@@ -1848,7 +1850,7 @@ void MainWindowImpl::checkVersion()
 #if (defined(Q_OS_WIN) || defined(Q_OS_MACOS))
         // Open thank you page
         QString welcomePage = QString("https://converseen.fasterland.net/thank/");
-		QDesktopServices::openUrl(QUrl(welcomePage, QUrl::TolerantMode));
+		// PIXEL SHROOM BRANDING 8.1: disable upstream website opening on new-version startup.
 #endif
 		IniSettings::setCurrentVersion(currentVersion);
     }
@@ -1964,7 +1966,7 @@ QString MainWindowImpl::destinationPath()
 
 void MainWindowImpl::openPaypalLink()
 {
-    QDesktopServices::openUrl(QUrl("https://converseen.fasterland.net/donate/", QUrl::TolerantMode));
+    // PIXEL SHROOM BRANDING 8.1: upstream donate action is hidden in the Pixel Shroom fork.
 }
 
 #ifndef DISABLE_CHECK_UPDATES
@@ -2014,12 +2016,12 @@ void MainWindowImpl::showUpdateDialog()
 
 void MainWindowImpl::bugReport()
 {
-    QDesktopServices::openUrl(QUrl("https://github.com/Faster3ck/Converseen/issues", QUrl::TolerantMode));
+    QDesktopServices::openUrl(QUrl("https://www.pixelshroomstudio.com/", QUrl::TolerantMode));
 }
 
 void MainWindowImpl::onlineHelp()
 {
-    QDesktopServices::openUrl(QUrl("https://converseen.fasterland.net/help/", QUrl::TolerantMode));
+    QDesktopServices::openUrl(QUrl("https://www.pixelshroomstudio.com/", QUrl::TolerantMode));
 }
 
 void MainWindowImpl::setRelativeSizeCheckboxes(int state)

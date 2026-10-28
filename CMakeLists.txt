@@ -4,7 +4,7 @@ if(WIN32)
     cmake_policy(SET CMP0135 NEW)
 endif()
 
-set(CONVERSEEN_VERSION 0.15.2.9)
+set(CONVERSEEN_VERSION 1.0.0)
 
 project(
     converseen
@@ -168,7 +168,12 @@ set(converseen_LANG
 
 if (USE_QT6)
     qt6_wrap_ui(converseen_UIS_H ${converseen_UIS})
-    qt6_wrap_cpp(converseen_MOC_SRCS ${converseen_HEADERS})
+    # Pixel Shroom: keep Qt MOC in sync with the C++ update-checker conditional.
+    if (DISABLE_CHECK_UPDATES)
+        qt6_wrap_cpp(converseen_MOC_SRCS ${converseen_HEADERS} OPTIONS -DDISABLE_CHECK_UPDATES)
+    else()
+        qt6_wrap_cpp(converseen_MOC_SRCS ${converseen_HEADERS})
+    endif()
     qt6_add_resources(converseen_RESOURCES ${converseen_RESOURCES})
     qt6_add_translation(converseen_RESOURCES ${converseen_LANG})
 else ()

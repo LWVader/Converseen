@@ -24,6 +24,7 @@
 #include <QApplication>
 #include <QLibraryInfo>
 #include <QDir>
+#include <QFileInfo>
 #include <QCommandLineParser>
 #include <QWidget>
 #include <QStyleFactory>
@@ -70,15 +71,59 @@ void restrictDllSearchPath()
 }
 #endif
 
+
+// PIXEL SHROOM PHASE 8 PORTABLE BOOTSTRAP
+// Only compiled for the separate build-portable target; the normal build is unchanged.
+#if defined(Q_OS_WIN) && defined(PIXELSHROOM_PORTABLE_BUILD)
+static bool configurePixelShroomPortablePaths()
+{
+    wchar_t executablePath[32768] = {};
+    const DWORD length = GetModuleFileNameW(nullptr, executablePath, 32768);
+    if (length == 0 || length >= 32768)
+        return false;
+
+    const QDir applicationDir(QFileInfo(QString::fromWCharArray(executablePath,
+                                        static_cast<int>(length))).absolutePath());
+    const QString coderPath = applicationDir.filePath("modules/coders");
+    const QString filterPath = applicationDir.filePath("modules/filters");
+    const QString configPath = applicationDir.filePath("imagemagick/config");
+
+    // Never accidentally use the developer's MSYS2 installation.
+    if (!QDir(coderPath).exists() || !QDir(configPath).exists())
+        return false;
+
+    qputenv("MAGICK_HOME", QDir::toNativeSeparators(applicationDir.absolutePath()).toUtf8());
+    qputenv("MAGICK_CONFIGURE_PATH", QDir::toNativeSeparators(configPath).toUtf8());
+    qputenv("MAGICK_CODER_MODULE_PATH", QDir::toNativeSeparators(coderPath).toUtf8());
+    if (QDir(filterPath).exists())
+        qputenv("MAGICK_FILTER_MODULE_PATH", QDir::toNativeSeparators(filterPath).toUtf8());
+    return true;
+}
+#endif
+
 int main(int argc, char ** argv)
 {
 #if defined(Q_OS_WIN)
     // restrictDllSearchPath();
 #endif
 
-	InitializeMagick(*argv);
+#if defined(Q_OS_WIN) && defined(PIXELSHROOM_PORTABLE_BUILD)
+    restrictDllSearchPath();
+    if (!configurePixelShroomPortablePaths()) {
+        MessageBoxW(nullptr,
+            L"Pixel Shroom Image Studio cannot find its bundled ImageMagick modules.\n"
+            L"Please re-extract the complete portable ZIP; do not move the EXE alone.",
+            L"Pixel Shroom Image Studio - Missing runtime files", MB_OK | MB_ICONERROR);
+        return 2;
+    }
+#endif
+    InitializeMagick(*argv);
 
-    QCoreApplication::setApplicationName("Converseen");
+    #if defined(PIXELSHROOM_PORTABLE_BUILD)
+    QCoreApplication::setApplicationName("Pixel Shroom Image Studio");
+#else
+    QCoreApplication::setApplicationName("Pixel Shroom Image Studio");
+#endif
     QCoreApplication::setApplicationVersion(globals::VERSION);
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -102,7 +147,7 @@ int main(int argc, char ** argv)
     QCommandLineOption printSupportedFormats({{"p", "supported-formats"}, "Prints a list of readable/writable supported formats."});
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("Converseen - The Batch Converter and Resizer");
+    parser.setApplicationDescription("Pixel Shroom Image Studio - Batch image and print preparation");
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addOption(winMagickPathOption);
