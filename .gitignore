@@ -13,3 +13,13 @@ build/
 /build/
 /build-portable/
 /dist/
+
+.fake
+# Pixel Shroom Phase 8 local backups
+/phase8-backups/
+*.bak
+
+# One-time development patch scripts
+/pixel_shroom_phase8_about_fix.py
+/pixel_shroom_phase8_moc_fix.py
+/pixel_shroom_phase8_qt6_fix.py
