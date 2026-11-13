@@ -1013,7 +1013,7 @@ void MainWindowImpl::setupPixelShroomControls()
         QStringList sources;
         // Website export follows the same checked queue items as Convert.
         // Queue sorting is disabled, so tree rows correspond to iAList rows.
-        const int rows = qMin(treeWidget->topLevelItemCount(), iAList->size());
+        const int rows = qMin(treeWidget->topLevelItemCount(), static_cast<int>(iAList->size()));
         for (int row = 0; row < rows; ++row) {
             const auto *queueItem = treeWidget->topLevelItem(row);
             if (!queueItem || queueItem->checkState(0) != Qt::Checked)
