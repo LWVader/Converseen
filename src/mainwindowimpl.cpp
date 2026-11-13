@@ -507,6 +507,12 @@ void MainWindowImpl::setupPixelShroomControls()
     otherHint->setWordWrap(true);
     compressGrid->addWidget(otherHint, 11, 0, 1, 3);
     compressGrid->setColumnStretch(1, 1);
+    auto *compressHint = new QLabel(
+        tr("Choose JPEG or WebP in 'Convert to', check custom quality, then click Convert "
+           "to create a smaller file. PNG compression is lossless and cannot guarantee a "
+           "smaller file. Website optimization uses its own action."), compressTab);
+    compressHint->setWordWrap(true);
+    compressGrid->addWidget(compressHint, 12, 0, 1, 3);
     tabs->addTab(compressTab, tr("Compress"));
 
     connect(qualitySlider, &QSlider::valueChanged, qualityNumber, &QSpinBox::setValue);
@@ -668,8 +674,9 @@ void MainWindowImpl::setupPixelShroomControls()
     uploadLayout->addWidget(uploadTitle);
     auto *uploadExplanation = new QLabel(
         tr("PREVIEW: under 10 MiB. ORIGINAL: under 50 MiB. "
-           "Originals retain their pixels and embedded print metadata. "
-           "Previews use a lossless codec but can have fewer pixels."), uploadTab);
+           "Lossless mode keeps original pixels and print metadata. "
+           "Optional high-quality compression keeps full dimensions and "
+           "verified DPI/ICC information, but is not pixel-identical."), uploadTab);
     uploadExplanation->setWordWrap(true);
     uploadLayout->addWidget(uploadExplanation);
     // Pixel Shroom Phase 19: one shared Resize/Website pixel size.
@@ -695,14 +702,29 @@ void MainWindowImpl::setupPixelShroomControls()
         tr("Automatically shrink website previews further if necessary to fit under 10 MiB"), uploadTab);
     allowPreviewDownscale->setChecked(true);
     uploadLayout->addWidget(allowPreviewDownscale);
+    auto *allowLossyOriginal = new QCheckBox(
+        tr("If original exceeds 50 MiB, allow high-quality JPEG/WebP compression"), uploadTab);
+    allowLossyOriginal->setObjectName("psUploadAllowLossyOriginal");
+    allowLossyOriginal->setChecked(false); // explicit opt-in: do not silently modify art pixels
+    allowLossyOriginal->setToolTip(
+        tr("Full original dimensions are preserved, but some color values may change. "
+           "16-bit originals remain lossless-only. The original source file is never overwritten."));
+    uploadLayout->addWidget(allowLossyOriginal);
+    auto *uploadQualityHint = new QLabel(
+        tr("When enabled, start with the Quality value in Compress and lower it no further "
+           "than 82 if needed. The copy keeps its pixel dimensions and verified print "
+           "resolution/ICC profile, but is not pixel-identical."), uploadTab);
+    uploadQualityHint->setWordWrap(true);
+    uploadLayout->addWidget(uploadQualityHint);
     auto *uploadAction = new QPushButton(tr("Optimize for website"), uploadTab);
     uploadAction->setObjectName("psUploadAction");
     uploadAction->setMinimumHeight(38);
     uploadLayout->addWidget(uploadAction);
     auto *uploadHint = new QLabel(
-        tr("Files are saved as __preview and __original pairs in the current output folder. "
-           "The app never overwrites your original images. Oversized originals that cannot "
-           "be reduced losslessly are reported rather than degraded."), uploadTab);
+        tr("Exports are saved as __preview and __original pairs. Your source images "
+           "are never overwritten. With fallback disabled, oversized originals fail "
+           "rather than lose quality. With fallback enabled, compressed originals "
+           "are explicitly labeled as lossy in the export report."), uploadTab);
     uploadHint->setWordWrap(true);
     uploadLayout->addWidget(uploadHint);
     uploadLayout->addStretch(1);
@@ -1002,7 +1024,7 @@ void MainWindowImpl::setupPixelShroomControls()
     connect(settingsMenuAction, &QAction::triggered,
             settingsDialog, openSettingsWindow);
     connect(uploadAction, &QPushButton::clicked, this,
-            [this, width, height, allowPreviewDownscale]() {
+            [this, width, height, allowPreviewDownscale, allowLossyOriginal, qualityNumber]() {
         // A 1-pixel value can be present before images have been selected;
         // never accidentally create unusably tiny website previews.
         if (width->value() < 64 || height->value() < 64) {
@@ -1054,7 +1076,8 @@ void MainWindowImpl::setupPixelShroomControls()
         }
         PixelShroomUpload::start(this, sources, destination,
                                 width->value(), height->value(),
-                                allowPreviewDownscale->isChecked());
+                                allowPreviewDownscale->isChecked(),
+                                allowLossyOriginal->isChecked(), qualityNumber->value());
     });
 
 

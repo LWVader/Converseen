@@ -102,6 +102,32 @@ inline BlobCandidate encode(Magick::Image &source, const QString &format) {
     return out;
 }
 
+// Optional website fallback: high-quality lossy copy, same pixel dimensions.
+ // Never used unless the user explicitly enables it in the Website tab.
+inline BlobCandidate encodeLossy(Magick::Image &source, const QString &format, int quality) {
+    BlobCandidate out;
+    Magick::Image image(source);
+    if (format == "webp") {
+        image.magick("WEBP");
+        image.defineValue("webp", "lossless", "false");
+        image.defineValue("webp", "method", "6");
+        out.suffix = ".webp";
+        out.description = QStringLiteral("WebP lossy quality %1").arg(quality);
+    } else {
+        image.magick("JPEG");
+        out.suffix = ".jpg";
+        out.description = QStringLiteral("JPEG lossy quality %1").arg(quality);
+    }
+    image.quality(size_t(quality));
+    Magick::Blob blob;
+    image.write(&blob);
+    if (blob.length() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        throw std::runtime_error("Lossy output exceeds memory safety limit");
+    out.bytes = QByteArray(static_cast<const char*>(blob.data()), static_cast<int>(blob.length()));
+    out.valid = !out.bytes.isEmpty();
+    return out;
+}
+
 inline bool nearDensity(const Magick::Image &a, const Magick::Image &b) {
     if (a.resolutionUnits() == Magick::UndefinedResolution) return true;
     if (b.resolutionUnits() == Magick::UndefinedResolution) return false;
@@ -135,6 +161,29 @@ inline bool originalEquivalent(const Magick::Image &input, const BlobCandidate &
         for (const std::string name : {"ICC", "EXIF", "XMP", "IPTC"})
             if (!sameProfile(input, decoded, name)) return false;
         return true;
+    } catch (...) { return false; }
+}
+
+// Lossy output may change color values, but must preserve the original image
+// dimensions and important print/color information.
+inline bool lossyMetadataOK(const Magick::Image &input, const BlobCandidate &candidate) {
+    if (!candidate.valid) return false;
+    try {
+        Magick::Blob bytes(candidate.bytes.constData(), size_t(candidate.bytes.size()));
+        Magick::Image decoded(bytes);
+        // PNG images often have an undefined orientation while JPEG writers
+        // normalize that field to top-left. This does not rotate the artwork.
+        const auto originalOrientation = input.orientation();
+        const bool orientationOK =
+            originalOrientation == Magick::UndefinedOrientation
+                ? (decoded.orientation() == Magick::UndefinedOrientation ||
+                   decoded.orientation() == Magick::TopLeftOrientation)
+                : decoded.orientation() == originalOrientation;
+        return decoded.columns() == input.columns() &&
+               decoded.rows() == input.rows() &&
+               orientationOK &&
+               nearDensity(input, decoded) &&
+               sameProfile(input, decoded, "ICC");
     } catch (...) { return false; }
 }
 
@@ -213,7 +262,8 @@ inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &origi
 }
 
 inline Result process(const QString &sourcePath, const QString &targetDir,
-                      int maxWidth, int maxHeight, bool downscale) {
+                      int maxWidth, int maxHeight, bool downscale,
+                      bool allowLossyOriginal, int preferredQuality) {
     Result result;
     result.input = sourcePath;
     try {
@@ -246,8 +296,36 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
                     original = std::move(candidate);
             } catch (const Magick::Exception &) { /* the original source remains safe */ }
         }
+        if (original.bytes.size() >= OriginalLimit && allowLossyOriginal) {
+            // A photograph or opaque 8-bit artwork can often reach 50 MiB
+            // at high quality without changing its pixel dimensions.
+            // 16-bit originals are not silently reduced to 8-bit.
+            if (raw.depth() <= 8) {
+                // An alpha channel can exist even when all pixels are opaque.
+                // Encode fully opaque artwork as JPEG; preserve actual
+                // transparency via WebP when needed.
+                const QString codec = raw.isOpaque() ? QStringLiteral("jpeg")
+                                                      : QStringLiteral("webp");
+                // Highest acceptable quality wins; never drop below 82.
+                const int ceiling = qBound(82, preferredQuality, 98);
+                for (const int quality : {ceiling, 94, 90, 86, 82}) {
+                    if (quality > ceiling) continue;
+                    try {
+                        BlobCandidate candidate = encodeLossy(raw, codec, quality);
+                        if (candidate.valid && candidate.bytes.size() < OriginalLimit &&
+                            lossyMetadataOK(raw, candidate)) {
+                            original = std::move(candidate);
+                            break;
+                        }
+                    } catch (const Magick::Exception &) { /* test next quality */ }
+                }
+            }
+        }
         if (original.bytes.size() >= OriginalLimit)
-            throw std::runtime_error("Original is 50 MiB or larger after verified lossless attempts; original pixels and quality were preserved");
+            throw std::runtime_error(
+                "Original cannot fit under 50 MiB with the selected fidelity settings. "
+                "Enable the optional high-quality original compression under Website, "
+                "or use a smaller source. No source pixels were changed.");
         int pw=0, ph=0;
         BlobCandidate preview = choosePreview(input, bytes, suffix, maxWidth, maxHeight, downscale, pw, ph);
         if (preview.bytes.size() >= PreviewLimit)
@@ -282,7 +360,9 @@ inline QString safeTsv(QString s) {
 }
 
 inline Summary batch(const QStringList &files, const QString &outDir,
-                     int maxWidth, int maxHeight, bool downscale, const std::shared_ptr<std::atomic_bool> &cancel) {
+                     int maxWidth, int maxHeight, bool downscale,
+                     bool allowLossyOriginal, int preferredQuality,
+                     const std::shared_ptr<std::atomic_bool> &cancel) {
     Summary result;
     if (!QDir(outDir).exists() && !QDir().mkpath(outDir)) {
         Result failed; failed.message = "Cannot create output directory";
@@ -290,7 +370,8 @@ inline Summary batch(const QStringList &files, const QString &outDir,
     }
     for (const QString &file : files) {
         if (cancel->load()) { result.cancelled = true; break; }
-        Result row = process(file, outDir, maxWidth, maxHeight, downscale);
+        Result row = process(file, outDir, maxWidth, maxHeight, downscale,
+                             allowLossyOriginal, preferredQuality);
         if (row.success) ++result.passed; else ++result.failed;
         result.rows.append(std::move(row));
     }
@@ -312,7 +393,8 @@ inline Summary batch(const QStringList &files, const QString &outDir,
 }
 
 inline void start(QWidget *parent, const QStringList &files, const QString &targetDir,
-                  int maxWidth, int maxHeight, bool downscale) {
+                  int maxWidth, int maxHeight, bool downscale,
+                  bool allowLossyOriginal, int preferredQuality) {
     if (files.isEmpty()) {
         QMessageBox::information(parent, QObject::tr("No images"),
                                  QObject::tr("Import images first, then open Upload-ready."));
@@ -350,8 +432,10 @@ inline void start(QWidget *parent, const QStringList &files, const QString &targ
         QMessageBox::information(parent, QObject::tr("Upload-ready results"), msg);
         watcher->deleteLater();
     });
-    watcher->setFuture(QtConcurrent::run([files, targetDir, maxWidth, maxHeight, downscale, cancel]() {
-        return batch(files, targetDir, maxWidth, maxHeight, downscale, cancel);
+    watcher->setFuture(QtConcurrent::run([files, targetDir, maxWidth, maxHeight, downscale,
+                                          allowLossyOriginal, preferredQuality, cancel]() {
+        return batch(files, targetDir, maxWidth, maxHeight, downscale,
+                     allowLossyOriginal, preferredQuality, cancel);
     }));
 }
 
