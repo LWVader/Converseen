@@ -1,0 +1,11 @@
+PIXEL SHROOM IMAGE STUDIO — PHASE 16 ACCEPTANCE
+
+[ ] Windowed Resize: no overlapping Width / Height / DPI / note
+[ ] Drag Studio/file-list divider small: vertical scrollbar appears, controls stay readable
+[ ] Maximize / restore repeatedly: no overlap or sudden clipping
+[ ] Tab switching: Resize, Compress, Enhance, Website, Settings all reachable
+[ ] 4800x4800 PNG export preserves ~300 DPI / 118.11 pixels per cm
+[ ] JPEG/WebP quality controls still affect exports
+[ ] Website previews <= 10 MiB, originals <= 100 MiB if losslessly possible
+[ ] Canvas colors, glass mode, and Mica/Acrylic selection work
+[ ] Installed production app/installer left untouched

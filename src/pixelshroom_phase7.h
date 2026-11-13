@@ -32,12 +32,7 @@ public:
         setMinimumSize(690, 500);
         resize(1000, 690);
         setModal(false);
-        setStyleSheet(R"PS7(
-            QDialog { background:#20252b; color:#eef4f7; }
-            QLabel { color:#eef4f7; }
-            QPushButton { background:#344550; color:#f6f8f9; border:1px solid #698093;
-                          border-radius:4px; padding:7px 16px; }
-        )PS7");
+        setObjectName("psGlassLivePreview");  // Inherit global Phase 14 theme.
         auto *layout = new QVBoxLayout(this);
         m_heading = new QLabel(tr("Sampled preview — edit the settings in Image Studio"), this);
         m_heading->setWordWrap(true);
@@ -51,7 +46,7 @@ public:
             view->setAlignment(Qt::AlignCenter);
             view->setMinimumHeight(240);
             view->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-            view->setStyleSheet("background:#11171e; border:1px solid #566b78;");
+            view->setObjectName("psGlassImageCanvas");
             column->addWidget(view, 1);
             panes->addLayout(column, 1);
             return view;

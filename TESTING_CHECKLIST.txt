@@ -1,0 +1,15 @@
+PIXEL SHROOM PHASE 15 — QUICK ACCEPTANCE CHECK
+
+[ ] Windowed: Settings Appearance and Personalization visible/scrollable
+[ ] Fullscreen: Settings no longer collapses to a single line
+[ ] Drag Studio/file-list divider; file list remains usable
+[ ] Entire output/format controls remain reachable
+[ ] Cards have softer glass treatment; no illegible labels
+[ ] Accent presets + custom color update tab/selection/focus
+[ ] Canvas mat presets + custom affect background, not image pixels
+[ ] Preferences persist after exit and relaunch
+[ ] Switch Light/Dark, Acrylic/Mica/Off
+[ ] Convert JPEG/PNG/WebP; Live Preview and Compare Output
+[ ] 4800x4800 PNG actual embedded 300 DPI (118.11 ppcm)
+[ ] Website preview ≤10 MiB, original ≤100 MiB or reports no safe lossless match
+[ ] No new warnings/errors; keep existing stable release separate

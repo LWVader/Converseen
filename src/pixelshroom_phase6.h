@@ -99,12 +99,7 @@ inline void compare(QWidget *owner, const QString &originalPath,
     dlg.setWindowTitle(QObject::tr("Pixel Shroom | Synchronized comparison"));
     dlg.setMinimumSize(780, 520);
     dlg.resize(1120, 750);
-    dlg.setStyleSheet(R"PS6(QDialog { background:#20252b; color:#eff4f7; }
-        QLabel { color:#eff4f7; }
-        QPushButton, QComboBox { color:#f4f6f8; background:#364650;
-          border:1px solid #62788b; padding:6px 12px; border-radius:4px; }
-        QGraphicsView { background:#11171e; border:1px solid #667784; }
-    )PS6");
+    dlg.setObjectName("psGlassCompareDialog");  // Phase 14 global glass.
     auto *root = new QVBoxLayout(&dlg);
     auto *header = new QHBoxLayout();
     auto *title = new QLabel(QObject::tr("ORIGINAL   /   EXPORTED OUTPUT"), &dlg);
@@ -123,6 +118,7 @@ inline void compare(QWidget *owner, const QString &originalPath,
         auto *name = new QLabel(caption, &dlg);
         layout->addWidget(name);
         auto *view = new QGraphicsView(&dlg);
+        view->setObjectName("psGlassImageCanvas");
         view->setRenderHint(QPainter::SmoothPixmapTransform, true);
         view->setDragMode(QGraphicsView::ScrollHandDrag);
         view->setResizeAnchor(QGraphicsView::AnchorViewCenter);
@@ -235,13 +231,7 @@ inline void livePreview(QWidget *owner, const QString &path, QSize target,
     dlg.setWindowTitle(QObject::tr("Pixel Shroom | Live quality preview"));
     dlg.setMinimumSize(730, 550);
     dlg.resize(1000, 700);
-    dlg.setStyleSheet(R"PS6(QDialog { background:#20252b; color:#f1f4f7; }
-        QLabel, QCheckBox { color:#f1f4f7; }
-        QPushButton, QSpinBox, QDoubleSpinBox { background:#364650; color:white;
-            border:1px solid #637b8c; padding:5px; border-radius:4px; }
-        QSlider::groove:horizontal { height:5px; background:#647783; }
-        QSlider::handle:horizontal { background:#68b9e7; width:16px; margin:-6px 0; }
-    )PS6");
+    dlg.setObjectName("psGlassLegacyPreviewDialog");  // Phase 14 global glass.
     auto *layout = new QVBoxLayout(&dlg);
     auto *heading = new QLabel(QObject::tr("SAMPLED PREVIEW  |  %1  |  Original %2 x %3 px")
         .arg(codec).arg(originalSize.width()).arg(originalSize.height()), &dlg);
@@ -254,7 +244,7 @@ inline void livePreview(QWidget *owner, const QString &path, QSize target,
         auto *image = new QLabel(&dlg);
         image->setMinimumHeight(320);
         image->setAlignment(Qt::AlignCenter);
-        image->setStyleSheet("background:#10161c; border:1px solid #506070;");
+        image->setObjectName("psGlassImageCanvas");
         image->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         pane->addWidget(image, 1);
         columns->addLayout(pane, 1);

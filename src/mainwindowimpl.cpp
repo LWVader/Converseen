@@ -37,6 +37,17 @@
 #include <QDialog>
 #include "pixelshroom_phase6.h"
 #include "pixelshroom_phase7.h"
+#include "pixelshroom_liquid_glass_theme.h"
+#include "pixelshroom_native_glass.h"
+#include <QScrollArea>
+#include <QSplitter>
+#include <QDialog>
+#include <QProgressBar>
+#include <QSettings>
+#include <QGraphicsDropShadowEffect>
+#include <QColor>
+#include "pixelshroom_upload_optimizer.h"
+#include <QApplication>
 #include <QImageReader>
 #include <QPixmap>
 #include <QFileInfo>
@@ -161,42 +172,96 @@ MainWindowImpl::MainWindowImpl(QWidget * parent)
 
 void MainWindowImpl::setupPixelShroomControls()
 {
+    // Phase 11: glass-inspired application theme; existing controls remain functional.
+    // Pixel Shroom Phase 12: opal / smoke liquid-glass interface.
+    // Appearance setting is saved independently of conversion settings.
+    QSettings glassSettings("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+    const bool glassDark = glassSettings.value("appearance/darkGlass", false).toBool();
+    qApp->setStyleSheet(PixelShroomLiquidGlass::window(glassDark));
     // Phase 2: Squoosh-inspired, accessible tabs; no changes to the batch engine.
     auto *panel = new QFrame(centralwidget);
     panel->setObjectName("psStudioPanel");
     panel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-    panel->setStyleSheet(R"PSCSS(
-        QFrame#psStudioPanel { background: #20252b; border: 1px solid #4a5662;
-            border-radius: 8px; color: #f4f6f8; }
-        QFrame#psStudioPanel QLabel, QFrame#psStudioPanel QCheckBox {
-            color: #f4f6f8; border: none; background: transparent; }
-        QFrame#psStudioPanel QTabWidget::pane { border: 0; background: #20252b; }
-        QWidget#psResizeTab, QWidget#psCompressTab, QWidget#psEnhanceTab {
-            background: #20252b; }
-        QFrame#psStudioPanel QTabBar::tab { background: #303941; color: #e8eef4;
-            min-width: 78px; padding: 9px 15px; border: 0; }
-        QFrame#psStudioPanel QTabBar::tab:selected { background: #68b9e7; color: #121c28; }
-        QFrame#psStudioPanel QComboBox, QFrame#psStudioPanel QSpinBox,
-        QFrame#psStudioPanel QDoubleSpinBox { color: #f5f7f9; background: #323941;
-            border: 1px solid #63717e; border-radius: 4px; min-height: 27px;
-            padding: 2px 7px; }
-        QFrame#psStudioPanel QPushButton, QFrame#psStudioPanel QToolButton {
-            color: #f4f6f8; background: #364650; border: 1px solid #667a89;
-            border-radius: 4px; padding: 5px 9px; }
-        QFrame#psStudioPanel QSlider::groove:horizontal {
-            height: 5px; background: #647783; border-radius: 2px; }
-        QFrame#psStudioPanel QSlider::handle:horizontal { background: #68b9e7;
-            border-radius: 8px; width: 16px; margin: -6px 0; }
-    )PSCSS");
+    panel->setStyleSheet(PixelShroomLiquidGlass::panel(glassDark));
+    // Soft glass elevation. Only the small control panel receives a shadow.
+    auto *glassShadow = new QGraphicsDropShadowEffect(panel);
+    glassShadow->setBlurRadius(23);
+    glassShadow->setOffset(0, 6);
+    glassShadow->setColor(QColor(22, 42, 72, 58));
+    panel->setGraphicsEffect(glassShadow);
     auto *root = new QVBoxLayout(panel);
-    root->setContentsMargins(12, 10, 12, 9);
-    root->setSpacing(7);
+    root->setContentsMargins(18, 16, 18, 16);
+    root->setSpacing(12);
     auto *heading = new QHBoxLayout();
     auto *title = new QLabel(tr("PIXEL SHROOM  |  IMAGE STUDIO"), panel);
     QFont titleFont = title->font();
     titleFont.setBold(true);
     title->setFont(titleFont);
-    heading->addWidget(title, 1);
+    // Clear title hierarchy without adding duplicate processing controls.
+    title->setText(tr("Image Studio"));
+    title->setObjectName("psStudioTitle");
+    auto *glassSubtitle = new QLabel(tr("PIXEL SHROOM  /  CREATE  ·  REFINE  ·  EXPORT"), panel);
+    glassSubtitle->setObjectName("psStudioSubtitle");
+    auto *brandStack = new QVBoxLayout();
+    brandStack->setSpacing(1);
+    brandStack->setContentsMargins(0, 0, 0, 0);
+    brandStack->addWidget(title);
+    brandStack->addWidget(glassSubtitle);
+    heading->addLayout(brandStack, 1);
+    // A single appearance switch, with persisted choice.
+    auto *glassMode = new QToolButton(panel);
+    glassMode->setObjectName("psGlassModeToggle");
+    glassMode->setToolTip(tr("Switch between light and dark glass"));
+    glassMode->setCheckable(true);
+    glassMode->setChecked(glassDark);
+    glassMode->setText(glassDark ? tr("Light glass") : tr("Dark glass"));
+    // Appearance toggle now lives under Settings.
+    // Pixel Shroom Phase 13: native Windows Acrylic/Mica backdrop.
+    // Material and dark/light are separate preferences, not duplicate controls.
+    auto *glassMaterialRow = new QHBoxLayout();
+    glassMaterialRow->setContentsMargins(2, 0, 2, 0);
+    glassMaterialRow->setSpacing(10);
+    auto *glassMaterialLabel = new QLabel(tr("Window backdrop"), panel);
+    auto *glassMaterial = new QComboBox(panel);
+    glassMaterial->setObjectName("psNativeGlassMaterial");
+    glassMaterial->addItem(tr("Desktop Acrylic · blur"), 2);
+    glassMaterial->addItem(tr("Mica · subtle"), 1);
+    glassMaterial->addItem(tr("Off · Qt appearance"), 0);
+    glassMaterial->setToolTip(tr("Windows 11 (build 22621+) native system backdrop. "
+        "Other systems automatically use the existing Qt glass appearance."));
+    const int savedBackdrop = glassSettings.value("appearance/nativeGlass", 2).toInt();
+    const int backdropIndex = glassMaterial->findData(savedBackdrop);
+    glassMaterial->setCurrentIndex(backdropIndex >= 0 ? backdropIndex : 0);
+    glassMaterialRow->addWidget(glassMaterialLabel);
+    glassMaterialRow->addWidget(glassMaterial);
+    glassMaterialRow->addStretch(1);
+    auto *glassNativeStatus = new QLabel(panel);
+    glassNativeStatus->setObjectName("psNativeGlassStatus");
+    glassNativeStatus->setWordWrap(true);
+    auto *nativeGlass = new PixelShroomNativeGlass::BackdropController(
+        this, centralwidget, panel, glassNativeStatus);
+    connect(glassMode, &QToolButton::toggled, this,
+            [glassMode, glassMaterial, nativeGlass](bool dark) {
+        glassMode->setText(dark ? QObject::tr("Light glass") : QObject::tr("Dark glass"));
+        QSettings settings("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+        settings.setValue("appearance/darkGlass", dark);
+        nativeGlass->setAppearance(dark, static_cast<PixelShroomNativeGlass::Material>(
+            glassMaterial->currentData().toInt()));
+    });
+    connect(glassMaterial, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [glassMode, glassMaterial, nativeGlass](int) {
+        const int material = glassMaterial->currentData().toInt();
+        QSettings settings("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+        settings.setValue("appearance/nativeGlass", material);
+        nativeGlass->setAppearance(glassMode->isChecked(),
+            static_cast<PixelShroomNativeGlass::Material>(material));
+    });
+    // Apply after Qt has created the top-level native HWND.
+    QTimer::singleShot(0, this, [glassMode, glassMaterial, nativeGlass]() {
+        nativeGlass->setAppearance(glassMode->isChecked(),
+            static_cast<PixelShroomNativeGlass::Material>(
+                glassMaterial->currentData().toInt()));
+    });
 
     // Pixel Shroom Phase 6: synchronized zoom and live quality preview.
     // Compare is the actual saved export, and preserves embedded-DPI verification.
@@ -236,11 +301,15 @@ void MainWindowImpl::setupPixelShroomControls()
     collapse->setChecked(true);
     heading->addWidget(collapse);
     root->addLayout(heading);
+    // Native backdrop controls now belong to Settings, not the image page.
 
     auto *tabs = new QTabWidget(panel);
+    tabs->setObjectName("psStudioTabs");
     tabs->setDocumentMode(true);
     // Fill the full tab header width rather than leaving a white empty strip.
     tabs->tabBar()->setExpanding(true);
+    tabs->tabBar()->setDrawBase(false);
+    tabs->tabBar()->setObjectName("psStudioTabBar");
     root->addWidget(tabs);
     connect(collapse, &QToolButton::toggled, this, [tabs, collapse](bool expanded) {
         tabs->setVisible(expanded);
@@ -251,7 +320,7 @@ void MainWindowImpl::setupPixelShroomControls()
     auto *resizeTab = new QWidget(tabs);
     resizeTab->setObjectName("psResizeTab");
     auto *sizeGrid = new QGridLayout(resizeTab);
-    sizeGrid->setContentsMargins(8, 12, 8, 10);
+    sizeGrid->setContentsMargins(16, 18, 16, 16);
     sizeGrid->setHorizontalSpacing(14);
     sizeGrid->setVerticalSpacing(10);
     auto *preset = new QComboBox(resizeTab);
@@ -379,7 +448,7 @@ void MainWindowImpl::setupPixelShroomControls()
     auto *compressTab = new QWidget(tabs);
     compressTab->setObjectName("psCompressTab");
     auto *compressGrid = new QGridLayout(compressTab);
-    compressGrid->setContentsMargins(8, 12, 8, 10);
+    compressGrid->setContentsMargins(16, 18, 16, 16);
     compressGrid->setHorizontalSpacing(14);
     compressGrid->setVerticalSpacing(10);
     auto *formatLabel = new QLabel(tr("Image format: choose it in 'Convert to' below"), compressTab);
@@ -556,7 +625,7 @@ void MainWindowImpl::setupPixelShroomControls()
     auto *enhanceTab = new QWidget(tabs);
     enhanceTab->setObjectName("psEnhanceTab");
     auto *enhanceGrid = new QGridLayout(enhanceTab);
-    enhanceGrid->setContentsMargins(8, 12, 8, 10);
+    enhanceGrid->setContentsMargins(16, 18, 16, 16);
     enhanceGrid->setHorizontalSpacing(14);
     enhanceGrid->setVerticalSpacing(12);
     auto makeEnhancement = [this, enhanceTab, enhanceGrid](int row, const QString &label,
@@ -594,6 +663,374 @@ void MainWindowImpl::setupPixelShroomControls()
     enhanceGrid->addWidget(enhanceHint, 2, 0, 1, 3);
     enhanceGrid->setColumnStretch(1, 1);
     tabs->addTab(enhanceTab, tr("Enhance"));
+    // Pixel Shroom Phase 11: upload-ready exports and premium glass UI.
+    // A dedicated batch workflow; existing Convert / 300-DPI code is unchanged.
+    auto *uploadTab = new QWidget(tabs);
+    uploadTab->setObjectName("psUploadTab");
+    auto *uploadLayout = new QVBoxLayout(uploadTab);
+    uploadLayout->setContentsMargins(16, 18, 16, 16);
+    uploadLayout->setSpacing(11);
+    auto *uploadTitle = new QLabel(tr("Website exports"), uploadTab);
+    QFont uploadFont = uploadTitle->font();
+    uploadFont.setBold(true);
+    uploadTitle->setFont(uploadFont);
+    uploadLayout->addWidget(uploadTitle);
+    auto *uploadExplanation = new QLabel(
+        tr("PREVIEW: under 10 MiB. ORIGINAL: under 50 MiB. "
+           "Originals retain their pixels and embedded print metadata. "
+           "Previews use a lossless codec but can have fewer pixels."), uploadTab);
+    uploadExplanation->setWordWrap(true);
+    uploadLayout->addWidget(uploadExplanation);
+    // Pixel Shroom Phase 19: one shared Resize/Website pixel size.
+    // The main Resize tab owns the values; Website only reads the same widgets.
+    auto *sharedSize = new QLabel(uploadTab);
+    sharedSize->setObjectName("psUploadSharedDimensions");
+    sharedSize->setWordWrap(true);
+    auto updateSharedSize = [width, height, sharedSize]() {
+        sharedSize->setText(QObject::tr("Preview maximum from Resize: %1 x %2 px. "
+                    "No upscaling; reduce dimensions further only if the 10 MiB cap requires it.")
+                    .arg(width->value()).arg(height->value()));
+    };
+    QObject::connect(width, QOverload<int>::of(&QSpinBox::valueChanged),
+                     uploadTab, [updateSharedSize](int) { updateSharedSize(); });
+    QObject::connect(height, QOverload<int>::of(&QSpinBox::valueChanged),
+                     uploadTab, [updateSharedSize](int) { updateSharedSize(); });
+    // Preset selection updates both spinboxes under QSignalBlocker.
+    QObject::connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     uploadTab, [updateSharedSize](int) { updateSharedSize(); });
+    updateSharedSize();
+    uploadLayout->addWidget(sharedSize);
+    auto *allowPreviewDownscale = new QCheckBox(
+        tr("Automatically shrink website previews further if necessary to fit under 10 MiB"), uploadTab);
+    allowPreviewDownscale->setChecked(true);
+    uploadLayout->addWidget(allowPreviewDownscale);
+    auto *uploadAction = new QPushButton(tr("Optimize for website"), uploadTab);
+    uploadAction->setObjectName("psUploadAction");
+    uploadAction->setMinimumHeight(38);
+    uploadLayout->addWidget(uploadAction);
+    auto *uploadHint = new QLabel(
+        tr("Files are saved as __preview and __original pairs in the current output folder. "
+           "The app never overwrites your original images. Oversized originals that cannot "
+           "be reduced losslessly are reported rather than degraded."), uploadTab);
+    uploadHint->setWordWrap(true);
+    uploadLayout->addWidget(uploadHint);
+    uploadLayout->addStretch(1);
+    tabs->addTab(uploadTab, tr("Website"));
+    // Pixel Shroom Phase 14: application-wide glass and appearance Settings tab.
+    // Keep visual preferences separate from image-processing settings.
+    // Pixel Shroom Phase 15: resizable workspace, scrollable settings, custom glass colors.
+    // Settings scrolls independently; maximization must not clip these controls.
+    auto *settingsTab = new QWidget(tabs);
+    settingsTab->setObjectName("psSettingsTab");
+    auto *settingsLayout = new QVBoxLayout(settingsTab);
+    settingsLayout->setContentsMargins(2, 2, 2, 2);
+    settingsLayout->setSpacing(0);
+    auto *settingsScroll = new QScrollArea(settingsTab);
+    settingsScroll->setObjectName("psSettingsScroll");
+    settingsScroll->setWidgetResizable(true);
+    settingsScroll->setFrameShape(QFrame::NoFrame);
+    settingsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    settingsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    auto *settingsContent = new QWidget(settingsScroll);
+    settingsContent->setObjectName("psSettingsContent");
+    auto *contentLayout = new QVBoxLayout(settingsContent);
+    contentLayout->setContentsMargins(12, 12, 12, 15);
+    contentLayout->setSpacing(16);
+
+    auto *appearanceCard = new QFrame(settingsContent);
+    appearanceCard->setObjectName("psAppearanceCard");
+    auto *appearanceCardLayout = new QVBoxLayout(appearanceCard);
+    appearanceCardLayout->setContentsMargins(20, 17, 20, 19);
+    appearanceCardLayout->setSpacing(13);
+    auto *appearanceTitle = new QLabel(tr("Appearance"), appearanceCard);
+    appearanceTitle->setObjectName("psAppearanceTitle");
+    appearanceCardLayout->addWidget(appearanceTitle);
+    auto *themeLine = new QHBoxLayout();
+    themeLine->setSpacing(14);
+    themeLine->addWidget(new QLabel(tr("Light / dark glass"), appearanceCard));
+    themeLine->addStretch(1);
+    themeLine->addWidget(glassMode);
+    appearanceCardLayout->addLayout(themeLine);
+    appearanceCardLayout->addLayout(glassMaterialRow);
+    appearanceCardLayout->addWidget(glassNativeStatus);
+    auto *appearanceHint = new QLabel(
+        tr("Native Acrylic or Mica is behind the main window. The cards use "
+           "translucent Qt materials and preserve readability."), appearanceCard);
+    appearanceHint->setWordWrap(true);
+    appearanceCardLayout->addWidget(appearanceHint);
+    auto *appearanceShadow = new QGraphicsDropShadowEffect(appearanceCard);
+    appearanceShadow->setBlurRadius(24);
+    appearanceShadow->setOffset(0, 4);
+    appearanceShadow->setColor(QColor(8, 25, 51, 38));
+    appearanceCard->setGraphicsEffect(appearanceShadow);
+    contentLayout->addWidget(appearanceCard);
+
+    auto *personalCard = new QFrame(settingsContent);
+    personalCard->setObjectName("psPersonalizationCard");
+    auto *personalLayout = new QVBoxLayout(personalCard);
+    personalLayout->setContentsMargins(20, 17, 20, 19);
+    personalLayout->setSpacing(12);
+    auto *personalTitle = new QLabel(tr("Workspace personalization"), personalCard);
+    personalTitle->setObjectName("psPersonalizationTitle");
+    personalLayout->addWidget(personalTitle);
+    auto *personalHint = new QLabel(
+        tr("Choose an accent for controls and a canvas-mat color. "
+           "These changes never alter the images you export."), personalCard);
+    personalHint->setWordWrap(true);
+    personalLayout->addWidget(personalHint);
+    auto *personalGrid = new QGridLayout();
+    personalGrid->setHorizontalSpacing(12);
+    personalGrid->setVerticalSpacing(12);
+    auto *accentBox = new QComboBox(personalCard);
+    accentBox->setObjectName("psAccentChoice");
+    accentBox->addItem(tr("Ice blue"), QStringLiteral("#78b6f7"));
+    accentBox->addItem(tr("Amethyst"), QStringLiteral("#b99bff"));
+    accentBox->addItem(tr("Sea glass"), QStringLiteral("#66d5c3"));
+    accentBox->addItem(tr("Coral"), QStringLiteral("#ff9c88"));
+    accentBox->addItem(tr("Champagne"), QStringLiteral("#e9c889"));
+    auto *accentCustom = new QPushButton(tr("Custom..."), personalCard);
+    accentCustom->setObjectName("psCustomAccent");
+    personalGrid->addWidget(new QLabel(tr("Accent color"), personalCard), 0, 0);
+    personalGrid->addWidget(accentBox, 0, 1);
+    personalGrid->addWidget(accentCustom, 0, 2);
+
+    auto *canvasBox = new QComboBox(personalCard);
+    canvasBox->setObjectName("psCanvasChoice");
+    canvasBox->addItem(tr("Automatic glass"), QStringLiteral("auto"));
+    canvasBox->addItem(tr("Midnight"), QStringLiteral("#142239"));
+    canvasBox->addItem(tr("Slate"), QStringLiteral("#334b60"));
+    canvasBox->addItem(tr("Warm charcoal"), QStringLiteral("#303036"));
+    canvasBox->addItem(tr("Soft ivory"), QStringLiteral("#f0ede6"));
+    auto *canvasCustom = new QPushButton(tr("Custom..."), personalCard);
+    canvasCustom->setObjectName("psCustomCanvas");
+    personalGrid->addWidget(new QLabel(tr("Image canvas mat"), personalCard), 1, 0);
+    personalGrid->addWidget(canvasBox, 1, 1);
+    personalGrid->addWidget(canvasCustom, 1, 2);
+    personalGrid->setColumnStretch(1, 1);
+    personalLayout->addLayout(personalGrid);
+
+    QSettings appearanceSettings("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+    const QString savedAccent = appearanceSettings.value(
+        "appearance/accentColor", "#78b6f7").toString();
+    const QString savedCanvas = appearanceSettings.value(
+        "appearance/canvasColor", "auto").toString();
+    auto selectSaved = [](QComboBox *box, const QString &stored) {
+        int index = box->findData(stored);
+        if (index < 0 && QColor(stored).isValid()) {
+            box->addItem(QObject::tr("Custom (%1)").arg(stored), stored);
+            index = box->count() - 1;
+        }
+        box->setCurrentIndex(index >= 0 ? index : 0);
+    };
+    selectSaved(accentBox, savedAccent);
+    selectSaved(canvasBox, savedCanvas);
+
+    // One immediate refresh path: the backdrop controller recomposes both
+    // the native backdrop and Qt widget colors without touching image state.
+    auto refreshGlass = [glassMode, glassMaterial, nativeGlass]() {
+        nativeGlass->setAppearance(glassMode->isChecked(),
+            static_cast<PixelShroomNativeGlass::Material>(
+                glassMaterial->currentData().toInt()));
+    };
+    connect(accentBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [accentBox, refreshGlass](int index) {
+        if (index < 0) return;
+        QSettings s("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+        s.setValue("appearance/accentColor", accentBox->itemData(index).toString());
+        refreshGlass();
+    });
+    connect(canvasBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [canvasBox, refreshGlass](int index) {
+        if (index < 0) return;
+        QSettings s("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+        s.setValue("appearance/canvasColor", canvasBox->itemData(index).toString());
+        refreshGlass();
+    });
+    auto applyCustom = [this, refreshGlass](QComboBox *box,
+                                             const QString &key, const QString &title) {
+        QColor current(box->currentData().toString());
+        if (!current.isValid()) current = QColor(QStringLiteral("#78b6f7"));
+        const QColor chosen = QColorDialog::getColor(current, this, title);
+        if (!chosen.isValid()) return;
+        const QString hex = chosen.name();
+        int customIndex = -1;
+        for (int i = 0; i < box->count(); ++i) {
+            if (box->itemText(i).startsWith(QObject::tr("Custom ("))) {
+                customIndex = i;
+                break;
+            }
+        }
+        if (customIndex < 0) {
+            box->addItem(QObject::tr("Custom (%1)").arg(hex), hex);
+            customIndex = box->count() - 1;
+        } else {
+            box->setItemText(customIndex, QObject::tr("Custom (%1)").arg(hex));
+            box->setItemData(customIndex, hex);
+        }
+        box->setCurrentIndex(customIndex);
+        QSettings s("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+        s.setValue(key, hex);
+        refreshGlass();
+    };
+    connect(accentCustom, &QPushButton::clicked, this,
+            [accentBox, applyCustom]() {
+        applyCustom(accentBox, QStringLiteral("appearance/accentColor"),
+                    QObject::tr("Choose accent color"));
+    });
+    connect(canvasCustom, &QPushButton::clicked, this,
+            [canvasBox, applyCustom]() {
+        applyCustom(canvasBox, QStringLiteral("appearance/canvasColor"),
+                    QObject::tr("Choose canvas mat color"));
+    });
+    auto *personalShadow = new QGraphicsDropShadowEffect(personalCard);
+    personalShadow->setBlurRadius(24);
+    personalShadow->setOffset(0, 4);
+    personalShadow->setColor(QColor(8, 25, 51, 38));
+    personalCard->setGraphicsEffect(personalShadow);
+    contentLayout->addWidget(personalCard);
+    contentLayout->addStretch(1);
+    settingsScroll->setWidget(settingsContent);
+    settingsLayout->addWidget(settingsScroll);
+    // Pixel Shroom Phase 18: independent settings window with live theme preview.
+    // The original settings widgets/signals are reused, not duplicated.
+    auto *settingsDialog = new QDialog(this);
+    settingsDialog->setObjectName("psAppearanceDialog");
+    settingsDialog->setWindowTitle(tr("Appearance · Pixel Shroom Image Studio"));
+    settingsDialog->setAttribute(Qt::WA_DeleteOnClose, false);
+    settingsDialog->setMinimumSize(740, 510);
+    settingsDialog->resize(1060, 700);
+    settingsDialog->setSizeGripEnabled(true);
+
+    auto *settingsWindowLayout = new QVBoxLayout(settingsDialog);
+    settingsWindowLayout->setContentsMargins(20, 18, 20, 18);
+    settingsWindowLayout->setSpacing(13);
+    auto *settingsHeader = new QHBoxLayout();
+    auto *settingsHeadingBlock = new QVBoxLayout();
+    settingsHeadingBlock->setSpacing(3);
+    auto *settingsHeading = new QLabel(tr("Appearance & personalization"), settingsDialog);
+    settingsHeading->setObjectName("psAppearanceDialogTitle");
+    settingsHeadingBlock->addWidget(settingsHeading);
+    auto *settingsDescription = new QLabel(tr("Customize the entire workspace. Changes appear immediately."), settingsDialog);
+    settingsDescription->setObjectName("psAppearanceDialogHint");
+    settingsHeadingBlock->addWidget(settingsDescription);
+    settingsHeader->addLayout(settingsHeadingBlock, 1);
+    auto *returnTop = new QPushButton(tr("Back to editor"), settingsDialog);
+    returnTop->setObjectName("psSettingsBackTop");
+    settingsHeader->addWidget(returnTop);
+    settingsWindowLayout->addLayout(settingsHeader);
+
+    auto *settingsPages = new QSplitter(Qt::Horizontal, settingsDialog);
+    settingsPages->setObjectName("psAppearancePages");
+    settingsPages->setChildrenCollapsible(false);
+    settingsPages->setHandleWidth(10);
+    // Re-parent the existing Settings page, including all controls and saved
+    // preferences, rather than introducing a second competing set of widgets.
+    settingsPages->addWidget(settingsTab);
+    settingsTab->setMinimumWidth(345);
+    settingsPages->setStretchFactor(0, 3);
+
+    auto *themePreview = new QFrame(settingsPages);
+    themePreview->setObjectName("psThemePreviewCard");
+    themePreview->setAttribute(Qt::WA_StyledBackground, true);
+    auto *previewLayout = new QVBoxLayout(themePreview);
+    previewLayout->setContentsMargins(18, 19, 18, 19);
+    previewLayout->setSpacing(12);
+    auto *previewTitle = new QLabel(tr("Live workspace preview"), themePreview);
+    previewTitle->setObjectName("psAppearanceTitle");
+    previewLayout->addWidget(previewTitle);
+    auto *previewExplanation = new QLabel(tr("Colors update as you make changes. This preview never modifies an image."), themePreview);
+    previewExplanation->setWordWrap(true);
+    previewExplanation->setObjectName("psThemePreviewCaption");
+    previewLayout->addWidget(previewExplanation);
+
+    auto *sampleHeader = new QFrame(themePreview);
+    sampleHeader->setObjectName("psThemePreviewHeader");
+    auto *sampleHeaderLayout = new QHBoxLayout(sampleHeader);
+    sampleHeaderLayout->setContentsMargins(12, 8, 12, 8);
+    sampleHeaderLayout->addWidget(new QLabel(tr("Image Studio"), sampleHeader), 1);
+    sampleHeaderLayout->addWidget(new QLabel(tr("Resize   ·   Compress   ·   Enhance"), sampleHeader));
+    previewLayout->addWidget(sampleHeader);
+
+    auto *sampleCanvas = new QFrame(themePreview);
+    sampleCanvas->setObjectName("psThemePreviewCanvas");
+    sampleCanvas->setMinimumHeight(150);
+    auto *sampleCanvasLayout = new QVBoxLayout(sampleCanvas);
+    auto *sampleCanvasText = new QLabel(tr("Image canvas color"), sampleCanvas);
+    sampleCanvasText->setAlignment(Qt::AlignCenter);
+    sampleCanvasText->setObjectName("psThemePreviewCaption");
+    sampleCanvasLayout->addWidget(sampleCanvasText);
+    previewLayout->addWidget(sampleCanvas, 1);
+    auto *sampleButtons = new QHBoxLayout();
+    auto *samplePrimary = new QLabel(tr("  Optimize images  "), themePreview);
+    samplePrimary->setObjectName("psThemePreviewPrimary");
+    samplePrimary->setAlignment(Qt::AlignCenter);
+    auto *sampleSecondary = new QLabel(tr("  Compare output  "), themePreview);
+    sampleSecondary->setObjectName("psThemePreviewSecondary");
+    sampleSecondary->setAlignment(Qt::AlignCenter);
+    sampleButtons->addWidget(samplePrimary);
+    sampleButtons->addWidget(sampleSecondary);
+    previewLayout->addLayout(sampleButtons);
+    auto *sampleProgress = new QProgressBar(themePreview);
+    sampleProgress->setTextVisible(false);
+    sampleProgress->setRange(0, 100);
+    sampleProgress->setValue(68);
+    sampleProgress->setFixedHeight(12);
+    previewLayout->addWidget(sampleProgress);
+    auto *sampleFooter = new QLabel(tr("Window materials and accent colors are cosmetic. Exported artwork stays unchanged."), themePreview);
+    sampleFooter->setObjectName("psThemePreviewCaption");
+    sampleFooter->setWordWrap(true);
+    previewLayout->addWidget(sampleFooter);
+
+    settingsPages->addWidget(themePreview);
+    settingsPages->setStretchFactor(1, 2);
+    settingsPages->setSizes({590, 390});
+    settingsWindowLayout->addWidget(settingsPages, 1);
+    auto *settingsFooter = new QHBoxLayout();
+    settingsFooter->addStretch(1);
+    auto *returnBottom = new QPushButton(tr("Back to editor"), settingsDialog);
+    returnBottom->setObjectName("psSettingsBackBottom");
+    settingsFooter->addWidget(returnBottom);
+    settingsWindowLayout->addLayout(settingsFooter);
+    QObject::connect(returnTop, &QPushButton::clicked, settingsDialog, &QDialog::close);
+    QObject::connect(returnBottom, &QPushButton::clicked, settingsDialog, &QDialog::close);
+    auto openSettingsWindow = [settingsDialog]() {
+        settingsDialog->show();
+        settingsDialog->raise();
+        settingsDialog->activateWindow();
+    };
+    // The image editor has no Settings tab anymore. It remains available
+    // from Edit > Appearance settings and the editor's header button.
+    auto *appearanceOpenButton = new QPushButton(tr("Appearance..."), panel);
+    appearanceOpenButton->setObjectName("psAppearanceOpenButton");
+    heading->addWidget(appearanceOpenButton);
+    QObject::connect(appearanceOpenButton, &QPushButton::clicked,
+                     settingsDialog, openSettingsWindow);
+    // Settings is also accessible from the Edit menu, not only image controls.
+    auto *settingsMenuAction = new QAction(tr("Appearance settings..."), this);
+    menu_Edit->addAction(settingsMenuAction);
+    connect(settingsMenuAction, &QAction::triggered,
+            settingsDialog, openSettingsWindow);
+    connect(uploadAction, &QPushButton::clicked, this,
+            [this, width, height, allowPreviewDownscale]() {
+        // A 1-pixel value can be present before images have been selected;
+        // never accidentally create unusably tiny website previews.
+        if (width->value() < 64 || height->value() < 64) {
+            QMessageBox::warning(this, tr("Resize dimensions needed"),
+                tr("Choose width and height of at least 64 px in Resize before Website optimization."));
+            return;
+        }
+        QStringList sources;
+        for (const auto &item : *iAList)
+            if (!item.completeFileName.isEmpty()) sources << item.completeFileName;
+        sources.removeDuplicates();
+        QString destination = QDir::fromNativeSeparators(lineDirectory->text().trimmed());
+        if (checkSameDir->isChecked() && !sources.isEmpty())
+            destination = QFileInfo(sources.first()).absolutePath();
+        PixelShroomUpload::start(this, sources, destination,
+                                width->value(), height->value(),
+                                allowPreviewDownscale->isChecked());
+    });
+
 
     // Honor native advanced editing (e.g., if user changes existing resize fields).
     connect(spin_geoWidth, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
@@ -683,20 +1120,132 @@ void MainWindowImpl::setupPixelShroomControls()
                 this, [whenChanged](double) { whenChanged(); });
 
     // Avoid the compressed single-row toolbar seen in Phase 1.
-    verticalLayout_20->insertWidget(0, panel);
+    // Pixel Shroom Phase 16: scrolling editor pages and balanced splitter.
+    // Keep the original page objects alive: quality, DPI, resize and export signal
+    // connections target their widgets. Only the Qt presentation is wrapped.
+    const int initiallySelectedTab = tabs->currentIndex();
+    {
+        const QSignalBlocker suppressTabSignals(tabs);
+        for (QWidget *page : {static_cast<QWidget *>(resizeTab),
+                              static_cast<QWidget *>(compressTab),
+                              static_cast<QWidget *>(enhanceTab),
+                              static_cast<QWidget *>(uploadTab)}) {
+            const int existingIndex = tabs->indexOf(page);
+            if (existingIndex < 0 || !page->layout())
+                continue;
 
-    // Pixel Shroom Phase 3: hide the native Dimensions tab, not its widgets.
-    // Phase 2 deliberately updates groupDimensions, spin_geoWidth/Height,
-    // checkRelative, and groupResolution behind the scenes. Removing or
-    // disabling them could break the already-working conversion logic.
-    // Keep the Rotate and Flip page available in the Actions Panel.
+            // A grid must NEVER shrink its content to fit a short splitter pane;
+            // preserve natural row heights and scroll the viewport instead.
+            page->layout()->activate();
+            const int contentHeight = qMax(195, page->layout()->sizeHint().height() + 18);
+            page->setMinimumHeight(contentHeight);
+            page->setMinimumWidth(0);
+            page->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+            const QString caption = tabs->tabText(existingIndex);
+            const QIcon tabIcon = tabs->tabIcon(existingIndex);
+            const QString tip = tabs->tabToolTip(existingIndex);
+            tabs->removeTab(existingIndex);
+
+            auto *scrollArea = new QScrollArea(tabs);
+            scrollArea->setObjectName(QStringLiteral("psEditorScroll_%1").arg(page->objectName()));
+            scrollArea->setFrameShape(QFrame::NoFrame);
+            scrollArea->setWidgetResizable(true);
+            scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+            scrollArea->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
+            scrollArea->setAutoFillBackground(false);
+            scrollArea->viewport()->setAutoFillBackground(false);
+            // Phase 17: don't force transparent child backgrounds.
+            // The global glass theme paints stable page/viewport surfaces.
+            scrollArea->setStyleSheet(QString());
+            scrollArea->setAttribute(Qt::WA_StyledBackground, true);
+            scrollArea->setWidget(page);
+            tabs->insertTab(existingIndex, scrollArea, tabIcon, caption);
+            tabs->setTabToolTip(existingIndex, tip);
+        }
+        tabs->setCurrentIndex(initiallySelectedTab);
+    }
+    tabs->tabBar()->setUsesScrollButtons(true);
+
+    // Pixel Shroom Phase 20: single-window Image Studio above Preview.
+    // Keep the existing QDockWidget as a fixed left sidebar. It can no longer
+    // close, float, or move into a separate window. We reuse the real preview,
+    // studio controls and image queue; no processing widget is duplicated.
+    dockWidget->setFloating(false);
+    dockWidget->setAllowedAreas(Qt::LeftDockWidgetArea);
+    dockWidget->setFeatures(QDockWidget::NoDockWidgetFeatures);
+    dockWidget->toggleViewAction()->setVisible(false);
+    dockWidget->setMinimumWidth(500);
+    dockWidget->setMaximumWidth(760);
+    auto *emptyDockTitle = new QWidget(dockWidget);
+    emptyDockTitle->setFixedHeight(0);
+    dockWidget->setTitleBarWidget(emptyDockTitle);
+
+    // The original Actions sidebar already contains a scroll area and a
+    // Preview widget. Put the whole existing Image Studio above that Preview.
+    // This shares one scrollbar instead of generating yet another window.
+    verticalLayout_20->removeWidget(panel);
+    panel->setParent(scrollAreaWidgetContents);
+    panel->setMinimumWidth(0);
+    panel->setMinimumHeight(305);
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    verticalLayout_12->insertWidget(0, panel);
+    verticalLayout_12->setSpacing(12);
+    verticalLayout_7->setSizeConstraint(QLayout::SetDefaultConstraint);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    // Hide the old Image Studio actions without disconnecting any converter
+    // state. Settings remains available through Edit > Appearance settings.
+    collapse->setChecked(true);
+    collapse->hide();
+    if (auto *appearance = panel->findChild<QPushButton *>("psAppearanceOpenButton"))
+        appearance->hide();
+
+    // The center/right workspace is dedicated to queue and export details.
+    // Moving the EXISTING tree widget preserves selection, import and status
+    // signals. Keep the Phase 17 queue object name for its glass stylesheet.
+    auto *queueCard = new QFrame(centralwidget);
+    queueCard->setObjectName("psQueueCard");
+    queueCard->setAttribute(Qt::WA_StyledBackground, true);
+    auto *queueLayout = new QVBoxLayout(queueCard);
+    queueLayout->setContentsMargins(14, 11, 14, 14);
+    queueLayout->setSpacing(8);
+    auto *queueHeader = new QLabel(tr("IMAGE QUEUE"), queueCard);
+    queueHeader->setObjectName("psQueueHeader");
+    queueLayout->addWidget(queueHeader);
+    verticalLayout_20->removeWidget(treeWidget);
+    queueLayout->addWidget(treeWidget, 1);
+    treeWidget->setMinimumHeight(180);
+    treeWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    verticalLayout_20->insertWidget(0, queueCard, 1);
+    verticalLayout_20->setStretch(0, 1);
+
+    // Give the editor a useful starting width; the user can still change the
+    // divider between the fixed left sidebar and main workspace.
+    QTimer::singleShot(0, this, [this]() {
+        if (dockWidget && !dockWidget->isFloating())
+            resizeDocks({dockWidget}, {540}, Qt::Horizontal);
+    });
+
+    // Pixel Shroom Phase 21: remove broken orientation UI.
+    // Keep the native Dimensions page and Rotate/Flip widgets alive, but
+    // hidden: other parts of the converter may still access their fields.
     const int nativeDimensionsTab = tabWidget->indexOf(tab);
     const int rotateFlipTab = tabWidget->indexOf(tab_2);
-    if (nativeDimensionsTab >= 0 && rotateFlipTab >= 0) {
-        tabWidget->setCurrentIndex(rotateFlipTab);
+    if (nativeDimensionsTab >= 0)
         tabWidget->setTabVisible(nativeDimensionsTab, false);
-        tabWidget->setTabText(rotateFlipTab, tr("Rotate / Flip"));
-    }
+    if (rotateFlipTab >= 0)
+        tabWidget->setTabVisible(rotateFlipTab, false);
+    tabWidget->hide();
+
+    // Set the hidden native orientation options to neutral, even if the
+    // previous session saved a different selection. There is no visible
+    // orientation workflow in Pixel Shroom Image Studio anymore.
+    radioRotNo->setChecked(true);
+    radioFlipNo->setChecked(true);
 }
 
 MainWindowImpl::~MainWindowImpl()
