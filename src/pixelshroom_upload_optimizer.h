@@ -175,9 +175,10 @@ inline bool lossyMetadataOK(const Magick::Image &input, const BlobCandidate &can
         // normalize that field to top-left. This does not rotate the artwork.
         const auto originalOrientation = input.orientation();
         const bool orientationOK =
-            originalOrientation == Magick::UndefinedOrientation ||
-            originalOrientation == Magick::TopLeftOrientation ||
-            decoded.orientation() == originalOrientation;
+            originalOrientation == Magick::UndefinedOrientation
+                ? (decoded.orientation() == Magick::UndefinedOrientation ||
+                   decoded.orientation() == Magick::TopLeftOrientation)
+                : decoded.orientation() == originalOrientation;
         return decoded.columns() == input.columns() &&
                decoded.rows() == input.rows() &&
                orientationOK &&
