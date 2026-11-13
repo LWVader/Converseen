@@ -674,8 +674,9 @@ void MainWindowImpl::setupPixelShroomControls()
     uploadLayout->addWidget(uploadTitle);
     auto *uploadExplanation = new QLabel(
         tr("PREVIEW: under 10 MiB. ORIGINAL: under 50 MiB. "
-           "Originals retain their pixels and embedded print metadata. "
-           "Previews use a lossless codec but can have fewer pixels."), uploadTab);
+           "Lossless mode keeps original pixels and print metadata. "
+           "Optional high-quality compression keeps full dimensions and "
+           "verified DPI/ICC information, but is not pixel-identical."), uploadTab);
     uploadExplanation->setWordWrap(true);
     uploadLayout->addWidget(uploadExplanation);
     // Pixel Shroom Phase 19: one shared Resize/Website pixel size.
@@ -720,9 +721,10 @@ void MainWindowImpl::setupPixelShroomControls()
     uploadAction->setMinimumHeight(38);
     uploadLayout->addWidget(uploadAction);
     auto *uploadHint = new QLabel(
-        tr("Files are saved as __preview and __original pairs in the current output folder. "
-           "The app never overwrites your original images. Oversized originals that cannot "
-           "be reduced losslessly are reported rather than degraded."), uploadTab);
+        tr("Exports are saved as __preview and __original pairs. Your source images "
+           "are never overwritten. With fallback disabled, oversized originals fail "
+           "rather than lose quality. With fallback enabled, compressed originals "
+           "are explicitly labeled as lossy in the export report."), uploadTab);
     uploadHint->setWordWrap(true);
     uploadLayout->addWidget(uploadHint);
     uploadLayout->addStretch(1);
