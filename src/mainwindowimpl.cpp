@@ -295,11 +295,6 @@ void MainWindowImpl::setupPixelShroomControls()
     auto *previewButton = new QPushButton(tr("Live preview..."), panel);
     previewButton->setToolTip(tr("Preview smoothing, sharpening and JPEG/WebP compression before export."));
     heading->addWidget(previewButton);
-    auto *collapse = new QToolButton(panel);
-    collapse->setText(tr("Hide controls"));
-    collapse->setCheckable(true);
-    collapse->setChecked(true);
-    heading->addWidget(collapse);
     root->addLayout(heading);
     // Native backdrop controls now belong to Settings, not the image page.
 
@@ -311,10 +306,6 @@ void MainWindowImpl::setupPixelShroomControls()
     tabs->tabBar()->setDrawBase(false);
     tabs->tabBar()->setObjectName("psStudioTabBar");
     root->addWidget(tabs);
-    connect(collapse, &QToolButton::toggled, this, [tabs, collapse](bool expanded) {
-        tabs->setVisible(expanded);
-        collapse->setText(expanded ? QObject::tr("Hide controls") : QObject::tr("Show controls"));
-    });
 
     // Resize tab: exact pixel boxes, existing aspect-fit behavior, print DPI and filters.
     auto *resizeTab = new QWidget(tabs);
@@ -1020,12 +1011,47 @@ void MainWindowImpl::setupPixelShroomControls()
             return;
         }
         QStringList sources;
-        for (const auto &item : *iAList)
-            if (!item.completeFileName.isEmpty()) sources << item.completeFileName;
+        // Website export follows the same checked queue items as Convert.
+        // Queue sorting is disabled, so tree rows correspond to iAList rows.
+        const int rows = qMin(treeWidget->topLevelItemCount(), static_cast<int>(iAList->size()));
+        for (int row = 0; row < rows; ++row) {
+            const auto *queueItem = treeWidget->topLevelItem(row);
+            if (!queueItem || queueItem->checkState(0) != Qt::Checked)
+                continue;
+            const QString &source = iAList->at(row).completeFileName;
+            if (!source.isEmpty())
+                sources << source;
+        }
         sources.removeDuplicates();
+        if (sources.isEmpty()) {
+            QMessageBox::information(this, tr("No images checked"),
+                                     tr("Check one or more images in the queue before optimizing."));
+            return;
+        }
+
         QString destination = QDir::fromNativeSeparators(lineDirectory->text().trimmed());
-        if (checkSameDir->isChecked() && !sources.isEmpty())
-            destination = QFileInfo(sources.first()).absolutePath();
+        if (checkSameDir->isChecked()) {
+            // The optimizer takes one destination directory per batch.
+            // Do not silently put files from other source folders beside
+            // the first image when "Image's directory" is selected.
+            const QString firstDirectory = QFileInfo(sources.first()).absolutePath();
+            for (const QString &source : sources) {
+                const QString sourceDirectory = QFileInfo(source).absolutePath();
+#ifdef Q_OS_WIN
+                const auto comparison = Qt::CaseInsensitive;
+#else
+                const auto comparison = Qt::CaseSensitive;
+#endif
+                if (QDir::cleanPath(sourceDirectory).compare(
+                        QDir::cleanPath(firstDirectory), comparison) != 0) {
+                    QMessageBox::warning(this, tr("Mixed source folders"),
+                        tr("Website optimization cannot save to each image's directory in one batch yet. "
+                           "Choose a single output folder, or optimize each source folder separately."));
+                    return;
+                }
+            }
+            destination = firstDirectory;
+        }
         PixelShroomUpload::start(this, sources, destination,
                                 width->value(), height->value(),
                                 allowPreviewDownscale->isChecked());
@@ -1197,10 +1223,8 @@ void MainWindowImpl::setupPixelShroomControls()
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    // Hide the old Image Studio actions without disconnecting any converter
-    // state. Settings remains available through Edit > Appearance settings.
-    collapse->setChecked(true);
-    collapse->hide();
+    // Appearance belongs in Edit > Appearance settings.
+    // Keep the shared editing tabs always visible in the fixed sidebar.
     if (auto *appearance = panel->findChild<QPushButton *>("psAppearanceOpenButton"))
         appearance->hide();
 
@@ -2397,9 +2421,7 @@ void MainWindowImpl::checkVersion()
 
     if (savedVersion < currentVersion) {
 #if (defined(Q_OS_WIN) || defined(Q_OS_MACOS))
-        // Open thank you page
-        QString welcomePage = QString("https://converseen.fasterland.net/thank/");
-		// PIXEL SHROOM BRANDING 8.1: disable upstream website opening on new-version startup.
+        // Version migration only: do not open the upstream Converseen site.
 #endif
 		IniSettings::setCurrentVersion(currentVersion);
     }
