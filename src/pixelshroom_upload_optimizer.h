@@ -171,9 +171,16 @@ inline bool lossyMetadataOK(const Magick::Image &input, const BlobCandidate &can
     try {
         Magick::Blob bytes(candidate.bytes.constData(), size_t(candidate.bytes.size()));
         Magick::Image decoded(bytes);
+        // PNG images often have an undefined orientation while JPEG writers
+        // normalize that field to top-left. This does not rotate the artwork.
+        const auto originalOrientation = input.orientation();
+        const bool orientationOK =
+            originalOrientation == Magick::UndefinedOrientation ||
+            originalOrientation == Magick::TopLeftOrientation ||
+            decoded.orientation() == originalOrientation;
         return decoded.columns() == input.columns() &&
                decoded.rows() == input.rows() &&
-               decoded.orientation() == input.orientation() &&
+               orientationOK &&
                nearDensity(input, decoded) &&
                sameProfile(input, decoded, "ICC");
     } catch (...) { return false; }
@@ -293,12 +300,11 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
             // at high quality without changing its pixel dimensions.
             // 16-bit originals are not silently reduced to 8-bit.
             if (raw.depth() <= 8) {
-#if MagickLibVersion < 0x700
-                const bool hasAlpha = raw.matte();
-#else
-                const bool hasAlpha = raw.alpha();
-#endif
-                const QString codec = hasAlpha ? QStringLiteral("webp") : QStringLiteral("jpeg");
+                // An alpha channel can exist even when all pixels are opaque.
+                // Encode fully opaque artwork as JPEG; preserve actual
+                // transparency via WebP when needed.
+                const QString codec = raw.isOpaque() ? QStringLiteral("jpeg")
+                                                      : QStringLiteral("webp");
                 // Highest acceptable quality wins; never drop below 82.
                 const int ceiling = qBound(82, preferredQuality, 98);
                 for (const int quality : {ceiling, 94, 90, 86, 82}) {
