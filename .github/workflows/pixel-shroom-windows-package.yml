@@ -84,14 +84,18 @@ jobs:
           $oldPath = $env:PATH
           try {
             $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-            & "$portable\PixelShroomImageStudio.exe" -p *> "$env:RUNNER_TEMP\ps-formats.txt"
-            $exit = $LASTEXITCODE
-            Write-Host "Portable supported-formats exit code: $exit"
-            if ($exit -ne 0) {
-              if (Test-Path "$env:RUNNER_TEMP\ps-formats.txt") {
-                Get-Content "$env:RUNNER_TEMP\ps-formats.txt"
-              }
-              throw "Bundled portable executable failed the startup smoke test"
+            # This is a Windows GUI-subsystem EXE. PowerShell's native
+            # $LASTEXITCODE can be null even for a successful invocation.
+            # Start-Process -Wait gives the actual Win32 process exit code.
+            $process = Start-Process `
+              -FilePath "$portable\PixelShroomImageStudio.exe" `
+              -ArgumentList @("-p") `
+              -WorkingDirectory $portable `
+              -PassThru -Wait
+            $exitCode = $process.ExitCode
+            Write-Host "Portable Win32 process exit code: $exitCode"
+            if ($null -eq $exitCode -or $exitCode -ne 0) {
+              throw "Bundled portable executable exited with code $exitCode"
             }
           } finally {
             $env:PATH = $oldPath
