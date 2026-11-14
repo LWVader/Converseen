@@ -4,7 +4,6 @@
 // This is a separate batch command. The native conversion and print engine are unchanged.
 #include <Magick++.h>
 #include <QByteArray>
-#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -52,7 +51,6 @@ struct Result {
 
 struct Summary {
     QList<Result> rows;
-    QString reportPath;
     int passed = 0;
     int failed = 0;
     bool cancelled = false;
@@ -62,6 +60,30 @@ inline QString cleanStem(QString s) {
     s.replace(QRegularExpression(QStringLiteral(R"([\\/:*?"<>|\x00-\x1f])")), "_");
     s = s.trimmed();
     return s.isEmpty() ? QStringLiteral("artwork") : s;
+}
+
+// Remove only obsolete per-export TSV reports created by older builds.
+// Never recurse, follow symlinks, or delete any other application data/artwork.
+// Called once during application initialization; safe to repeat if the folder
+// no longer exists. A nonempty folder with unrelated files is left intact.
+inline void cleanupLegacyReports() {
+    const QString appData = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation);
+    if (appData.isEmpty()) return;
+
+    const QString reportsPath = QDir(appData).filePath(
+        QStringLiteral("upload-reports"));
+    QDir reports(reportsPath);
+    if (!reports.exists()) return;
+
+    const QStringList files = reports.entryList(
+        QStringList{QStringLiteral("PixelShroom-Upload-Report-*.tsv")},
+        QDir::Files | QDir::NoSymLinks | QDir::NoDotAndDotDot);
+    for (const QString &name : files)
+        QFile::remove(reports.absoluteFilePath(name));
+
+    // This removes only an empty legacy directory. Leave other contents alone.
+    QDir(appData).rmdir(QStringLiteral("upload-reports"));
 }
 
 inline QByteArray readSource(const QString &path) {
@@ -292,18 +314,14 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
     return result;
 }
 
-inline QString safeTsv(QString s) {
-    s.replace('\r',' '); s.replace('\n',' '); s.replace('\t',' ');
-    return s;
-}
-
 inline Summary batch(const QStringList &files, const QString &outDir,
                      bool allowLossyOriginal, int preferredQuality,
                      const std::shared_ptr<std::atomic_bool> &cancel,
                      const std::function<void(int, const QString &)> &reportStage) {
     Summary summary;
     if (!QDir(outDir).exists() && !QDir().mkpath(outDir)) {
-        Result failed; failed.message = "Cannot create output directory";
+        Result failed; failed.input = outDir;
+        failed.message = "Cannot create output directory";
         summary.rows.append(failed);
         summary.failed = static_cast<int>(files.size());
         return summary;
@@ -325,33 +343,9 @@ inline Summary batch(const QStringList &files, const QString &outDir,
                              preferredQuality, cancel, progress);
         if (row.success) ++summary.passed; else ++summary.failed;
         if (!row.success)
-            progress(3, QObject::tr("Finished with an error; see report"));
+            progress(3, QObject::tr("Failed; details appear in the results dialog"));
         summary.rows.append(std::move(row));
         if (cancel->load()) { summary.cancelled = true; break; }
-    }
-    // Keep diagnostic logs separate from the upload image folder.
-    const QString logsRoot = QStandardPaths::writableLocation(
-        QStandardPaths::AppDataLocation);
-    const QString reportDir = QDir(logsRoot).filePath("upload-reports");
-    if (!logsRoot.isEmpty() && QDir().mkpath(reportDir)) {
-        const QString timestamp = QDateTime::currentDateTime().toString(
-            "yyyyMMdd-hhmmss-zzz");
-        summary.reportPath = QDir(reportDir).filePath(
-            "PixelShroom-Upload-Report-" + timestamp + ".tsv");
-        QSaveFile log(summary.reportPath);
-        if (log.open(QIODevice::WriteOnly)) {
-            log.write("Source\tStatus\tOutput bytes\tOutput image\n");
-            for (const Result &row : summary.rows) {
-                const QString line = QStringLiteral("%1\t%2\t%3\t%4\n")
-                    .arg(safeTsv(row.input), safeTsv(row.message))
-                    .arg(row.originalBytes)
-                    .arg(safeTsv(row.originalPath));
-                log.write(line.toUtf8());
-            }
-            if (!log.commit()) summary.reportPath.clear();
-        } else {
-            summary.reportPath.clear();
-        }
     }
     return summary;
 }
@@ -390,17 +384,29 @@ inline void start(QWidget *parent, const QStringList &files, const QString &targ
         const Summary summary = watcher->result();
         if (guard) { guard->close(); guard->deleteLater(); }
         QStringList errors;
-        for (const Result &row : summary.rows)
-            if (!row.success && errors.size() < 6)
-                errors << QFileInfo(row.input).fileName() + ": " + row.message;
+        int extraErrors = 0;
+        for (const Result &row : summary.rows) {
+            if (!row.success) {
+                const QString line = QFileInfo(row.input).fileName() +
+                                     ": " + row.message;
+                if (errors.size() < 8) errors << line;
+                else ++extraErrors;
+            }
+        }
         QString msg = QObject::tr("Images prepared: %1    Failed: %2")
-            .arg(summary.passed).arg(summary.failed);
+                          .arg(summary.passed).arg(summary.failed);
         if (summary.cancelled)
             msg += QObject::tr("\nCancelled before the next image.");
-        if (!summary.reportPath.isEmpty())
-            msg += QObject::tr("\n\nDiagnostic report: %1").arg(summary.reportPath);
-        if (!errors.isEmpty()) msg += "\n\n" + errors.join("\n");
-        QMessageBox::information(parent, QObject::tr("Website image results"), msg);
+        if (!errors.isEmpty()) {
+            msg += "\n\n" + errors.join("\n");
+            if (extraErrors > 0)
+                msg += QObject::tr("\n... plus %1 additional failures.")
+                           .arg(extraErrors);
+        }
+        if (summary.failed > 0)
+            QMessageBox::warning(parent, QObject::tr("Website image results"), msg);
+        else
+            QMessageBox::information(parent, QObject::tr("Website image results"), msg);
         watcher->deleteLater();
     });
     const auto reportStage = [watcher, guard, steps](
