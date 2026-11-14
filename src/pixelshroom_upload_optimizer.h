@@ -14,6 +14,7 @@
 #include <QProgressDialog>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QWidget>
 #include <QtConcurrent/QtConcurrent>
@@ -32,7 +33,6 @@
 
 namespace PixelShroomUpload {
 
-constexpr qint64 PreviewLimit = qint64(10) * 1024 * 1024;
 constexpr qint64 OriginalLimit = qint64(50) * 1024 * 1024; // STRICT: files must be smaller
 
 struct BlobCandidate {
@@ -46,11 +46,7 @@ struct Result {
     QString input;
     QString message;
     QString originalPath;
-    QString previewPath;
     qint64 originalBytes = 0;
-    qint64 previewBytes = 0;
-    int previewWidth = 0;
-    int previewHeight = 0;
     bool success = false;
 };
 
@@ -76,32 +72,6 @@ inline QByteArray readSource(const QString &path) {
     const QByteArray bytes = f.readAll();
     if (bytes.size() != f.size()) throw std::runtime_error("Source file was not completely read");
     return bytes;
-}
-
-inline BlobCandidate encode(Magick::Image &source, const QString &format) {
-    BlobCandidate out;
-    Magick::Image image(source); // copy-on-write; do not mutate the source
-    if (format == "webp") {
-        image.magick("WEBP");
-        image.defineValue("webp", "lossless", "true");
-        image.defineValue("webp", "method", "6");
-        image.quality(100);
-        out.suffix = ".webp";
-        out.description = "WebP lossless";
-    } else {
-        image.magick("PNG");
-        image.defineValue("png", "compression-level", "9");
-        image.defineValue("png", "compression-filter", "5");
-        out.suffix = ".png";
-        out.description = "PNG lossless";
-    }
-    Magick::Blob blob;
-    image.write(&blob);
-    if (blob.length() > static_cast<size_t>(std::numeric_limits<int>::max()))
-        throw std::runtime_error("Encoded file is too large for memory");
-    out.bytes = QByteArray(static_cast<const char*>(blob.data()), static_cast<int>(blob.length()));
-    out.valid = !out.bytes.isEmpty();
-    return out;
 }
 
 // Optional website fallback: high-quality lossy copy, same pixel dimensions.
@@ -200,9 +170,8 @@ inline bool saveBytes(const QString &path, const QByteArray &bytes) {
 
 inline bool hasSafeStem(const QString &stem, const QString &outDir) {
     const QDir dir(outDir);
-    const QStringList candidates = dir.entryList(QStringList() << stem + "__original.*"
-                                                             << stem + "__preview.*",
-                                                  QDir::Files | QDir::NoDotAndDotDot);
+    const QStringList candidates = dir.entryList(
+        QStringList() << stem + "__original.*", QDir::Files | QDir::NoDotAndDotDot);
     return candidates.isEmpty();
 }
 
@@ -214,137 +183,44 @@ inline QString uniqueStem(const QString &baseName, const QString &outDir) {
     throw std::runtime_error("Too many existing export names");
 }
 
-    // Pixel Shroom Phase 19: shared Resize bounds
-inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &original,
-                                   const QString &suffix, int maxWidth, int maxHeight,
-                                   bool downscale, int &width, int &height,
-                                   double smoothSigma, double sharpenSigma,
-                                   const std::shared_ptr<std::atomic_bool> &cancel,
-                                   const std::function<void(const QString &)> &stage) {
-    const int iw = int(input.columns()), ih = int(input.rows());
-    const int targetW = std::max(1, std::min(20000, maxWidth));
-    const int targetH = std::max(1, std::min(20000, maxHeight));
-    if (original.size() < PreviewLimit && iw <= targetW && ih <= targetH &&
-        (!downscale || std::max(iw, ih) <= 2560) &&
-        smoothSigma <= 0.0 && sharpenSigma <= 0.0) {
-        // An already-valid original is also a valid, pixel-identical preview.
-        width = iw;
-        height = ih;
-        return {original, "." + suffix, "unchanged source", true};
-    }
-    Magick::Image preview(input);
-    double scale = std::min({1.0, double(targetW) / iw, double(targetH) / ih});
-    // Prevent large input artwork from causing minutes of pointless
-    // full-resolution preview encoding when automatic shrinking is enabled.
-    if (downscale && (original.size() >= PreviewLimit || std::max(iw, ih) > 2560)) {
-        const double fastPreviewEdge = 2560.0;
-        scale = std::min(scale, fastPreviewEdge / std::max(iw, ih));
-    }
-    if (scale < 1.0) {
-        if (stage) stage(QObject::tr("Resizing website preview"));
-        preview.filterType(Magick::LanczosFilter);
-        preview.resize(Magick::Geometry(size_t(std::max(1, qRound(iw * scale))),
-                                        size_t(std::max(1, qRound(ih * scale)))));
-    }
-
-    // Enhance the website preview only. Never alter the full-size original
-    // pixels or source file; keep preview enhancement responsive by applying
-    // it after the initial downscale.
-    if (cancel && cancel->load())
-        throw std::runtime_error("Cancelled before enhancement");
-    if (smoothSigma > 0.0 || sharpenSigma > 0.0) {
-        if (stage) stage(QObject::tr("Enhancing website preview"));
-        if (smoothSigma > 0.0) preview.blur(0.0, smoothSigma);
-        if (sharpenSigma > 0.0) preview.sharpen(0.0, sharpenSigma);
-    }
-
-    // One fast lossless codec at each size, instead of two maximum-effort
-    // encodes at up to 10 sizes. Honor 16-bit sources with PNG.
-    const QString codec = preview.depth() > 8 ? QStringLiteral("png")
-                                              : QStringLiteral("webp");
-    for (int attempt = 0; attempt < 10; ++attempt) {
-        if (cancel && cancel->load())
-            throw std::runtime_error("Cancelled during preview optimization");
-        if (stage)
-            stage(QObject::tr("Encoding preview (%1 x %2, attempt %3)")
-                    .arg(static_cast<qulonglong>(preview.columns()))
-                    .arg(static_cast<qulonglong>(preview.rows()))
-                    .arg(attempt + 1));
-        try {
-            Magick::Image image(preview);
-            if (codec == "webp") {
-                image.magick("WEBP");
-                image.defineValue("webp", "lossless", "true");
-                image.defineValue("webp", "method", "2");
-                image.quality(100);
-            } else {
-                image.magick("PNG");
-                image.defineValue("png", "compression-level", "3");
-            }
-            Magick::Blob blob;
-            image.write(&blob);
-            if (blob.length() < static_cast<size_t>(PreviewLimit)) {
-                BlobCandidate result;
-                result.bytes = QByteArray(static_cast<const char *>(blob.data()),
-                                           static_cast<qsizetype>(blob.length()));
-                result.suffix = codec == "webp" ? ".webp" : ".png";
-                result.description = codec == "webp" ? "WebP lossless" : "PNG lossless";
-                result.valid = !result.bytes.isEmpty();
-                width = int(preview.columns());
-                height = int(preview.rows());
-                return result;
-            }
-        } catch (const Magick::Exception &) {
-            // Try a smaller resolution if the codec fails.
-        }
-        if (!downscale || std::max(preview.columns(), preview.rows()) <= 256) break;
-        const size_t w = std::max<size_t>(1, size_t(std::floor(preview.columns() * 0.70)));
-        const size_t h = std::max<size_t>(1, size_t(std::floor(preview.rows() * 0.70)));
-        preview.filterType(Magick::LanczosFilter);
-        preview.resize(Magick::Geometry(w, h));
-    }
-    throw std::runtime_error("Preview cannot reach 10 MiB. Reduce Resize dimensions or allow automatic preview shrinking.");
-}
-
+// Export exactly one website-ready image; never resize or overwrite the source.
 inline Result process(const QString &sourcePath, const QString &targetDir,
-                      int maxWidth, int maxHeight, bool downscale,
                       bool allowLossyOriginal, int preferredQuality,
-                      double smoothSigma, double sharpenSigma,
                       const std::shared_ptr<std::atomic_bool> &cancel,
                       const std::function<void(int, const QString &)> &stage) {
     Result result;
     result.input = sourcePath;
     try {
-        if (stage) stage(0, QObject::tr("Reading source image"));
+        if (stage) stage(0, QObject::tr("Reading source artwork"));
         const QFileInfo source(sourcePath);
         const QString suffix = source.suffix().toLower();
-        if (!source.isFile()) throw std::runtime_error("Source file no longer exists");
+        if (!source.isFile())
+            throw std::runtime_error("Source image no longer exists");
         if (!(suffix == "png" || suffix == "jpeg" || suffix == "jpg" || suffix == "webp"))
-            throw std::runtime_error("Only PNG, JPEG and WebP still images are supported for upload export");
+            throw std::runtime_error("Website export supports PNG, JPEG and WebP");
         const QByteArray bytes = readSource(source.absoluteFilePath());
         if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
-        if (stage) stage(1, QObject::tr("Decoding image and checking dimensions"));
-        const Magick::Blob inputBlob(bytes.constData(), size_t(bytes.size()));
-        Magick::Image input(inputBlob);
-        input.autoOrient(); // source is not mutated; preview follows its orientation
-        if (input.columns() == 0 || input.rows() == 0)
-            throw std::runtime_error("Image has invalid dimensions");
-        if (input.columns() > 20000 || input.rows() > 20000 ||
-            input.columns() * input.rows() > 120000000ULL)
-            throw std::runtime_error("Image exceeds the 120-megapixel batch safety limit");
-        // Do not recompress an original that ALREADY meets the upload cap.
-        // It is the exact source file, preserving every byte and profile.
-        BlobCandidate original {bytes, "." + suffix, "unchanged source", true};
-        if (stage) stage(2, QObject::tr("Preparing original (50 MiB limit)"));
+        BlobCandidate original{bytes, "." + suffix, "unchanged source", true};
+
+        // An existing file under the size limit is already the best,
+        // byte-for-byte-identical original upload copy.
+        if (stage) stage(1, QObject::tr("Checking 50 MiB limit"));
         if (original.bytes.size() >= OriginalLimit) {
-            Magick::Image raw(inputBlob);
-            // Lossless attempts are limited and fast; avoid 100%-effort
-            // PNG/WebP work on multi-megapixel sources without a size need.
+            const Magick::Blob inputBlob(bytes.constData(), size_t(bytes.size()));
+            Magick::Image raw(inputBlob); // keep source EXIF orientation and density
+            if (raw.columns() == 0 || raw.rows() == 0 ||
+                raw.columns() > 20000 || raw.rows() > 20000 ||
+                raw.columns() * raw.rows() > 120000000ULL)
+                throw std::runtime_error("Source exceeds the supported image dimensions");
+
+            // Try one moderate-cost lossless PNG encoding when appropriate.
+            // For very large images with an opt-in lossy fallback, skip
+            // this often-expensive pass and try the 50 MiB fallback directly.
             if (suffix == "png" &&
                 (!allowLossyOriginal || raw.columns() * raw.rows() <= 16000000ULL)) {
+                if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
+                if (stage) stage(1, QObject::tr("Trying lossless PNG compression"));
                 try {
-                    if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
-                    if (stage) stage(2, QObject::tr("Trying fast lossless PNG"));
                     Magick::Image compressed(raw);
                     compressed.magick("PNG");
                     compressed.defineValue("png", "compression-level", "3");
@@ -352,29 +228,31 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
                     compressed.write(&blob);
                     if (blob.length() < static_cast<size_t>(OriginalLimit)) {
                         BlobCandidate candidate;
-                        candidate.bytes = QByteArray(static_cast<const char *>(blob.data()),
-                                                     static_cast<qsizetype>(blob.length()));
+                        candidate.bytes = QByteArray(
+                            static_cast<const char *>(blob.data()),
+                            static_cast<qsizetype>(blob.length()));
                         candidate.suffix = ".png";
                         candidate.description = "PNG lossless";
                         candidate.valid = !candidate.bytes.isEmpty();
-                        if (originalEquivalent(raw, candidate)) original = std::move(candidate);
+                        if (originalEquivalent(raw, candidate))
+                            original = std::move(candidate);
                     }
-                } catch (const Magick::Exception &) { /* try selected fallback */ }
+                } catch (const Magick::Exception &) {
+                    // The unmodified original remains available.
+                }
             }
-            if (original.bytes.size() >= OriginalLimit && allowLossyOriginal && raw.depth() <= 8) {
-#if MagickLibVersion < 0x700
-                const bool opaque = !raw.matte();
-#else
-                const bool opaque = raw.isOpaque();
-#endif
-                const QString codec = opaque ? QStringLiteral("jpeg")
-                                             : QStringLiteral("webp");
+
+            if (original.bytes.size() >= OriginalLimit &&
+                allowLossyOriginal && raw.depth() <= 8) {
+                const QString codec = raw.isOpaque() ? QStringLiteral("jpeg")
+                                                     : QStringLiteral("webp");
                 const int ceiling = qBound(82, preferredQuality, 98);
                 for (const int quality : {ceiling, 94, 90, 86, 82}) {
-                    if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
                     if (quality > ceiling) continue;
-                    if (stage) stage(2, QObject::tr("Compressing original as %1 at quality %2")
-                                               .arg(codec.toUpper()).arg(quality));
+                    if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
+                    if (stage)
+                        stage(1, QObject::tr("Compressing %1 copy at quality %2")
+                              .arg(codec.toUpper()).arg(quality));
                     try {
                         BlobCandidate candidate = encodeLossy(raw, codec, quality);
                         if (candidate.valid && candidate.bytes.size() < OriginalLimit &&
@@ -382,42 +260,30 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
                             original = std::move(candidate);
                             break;
                         }
-                    } catch (const Magick::Exception &) { /* try next quality */ }
+                    } catch (const Magick::Exception &) {
+                        // Try the next requested quality step.
+                    }
                 }
             }
         }
+
         if (original.bytes.size() >= OriginalLimit)
             throw std::runtime_error(
-                "Original cannot fit under 50 MiB with the selected fidelity settings. "
-                "Enable the optional high-quality original compression under Website, "
-                "or use a smaller source. No source pixels were changed.");
+                "The full-resolution image cannot fit strictly below 50 MiB "
+                "with the selected compression and metadata safeguards; "
+                "nothing was exported or resized.");
         if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
-        if (stage) stage(3, QObject::tr("Preparing website preview (10 MiB limit)"));
-        int pw = 0, ph = 0;
-        BlobCandidate preview = choosePreview(input, bytes, suffix, maxWidth, maxHeight,
-             downscale, pw, ph, smoothSigma, sharpenSigma, cancel,
-             [stage](const QString &detail) { if (stage) stage(3, detail); });
-        if (preview.bytes.size() >= PreviewLimit)
-            throw std::runtime_error("Preview exceeds the 10 MiB limit");
-        if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
-        if (stage) stage(4, QObject::tr("Saving original and preview"));
+        if (stage) stage(2, QObject::tr("Saving single full-resolution upload image"));
         const QString stem = uniqueStem(cleanStem(source.completeBaseName()), targetDir);
-        const QDir dir(targetDir);
-        const QString origPath = dir.filePath(stem + "__original" + original.suffix);
-        const QString prevPath = dir.filePath(stem + "__preview" + preview.suffix);
-        if (!saveBytes(origPath, original.bytes))
-            throw std::runtime_error("Could not safely save the original file");
-        if (!saveBytes(prevPath, preview.bytes)) {
-            QFile::remove(origPath); // rollback only the file created in this invocation
-            throw std::runtime_error("Could not safely save the preview file");
-        }
+        const QString destination = QDir(targetDir).filePath(
+            stem + "__original" + original.suffix);
+        if (!saveBytes(destination, original.bytes))
+            throw std::runtime_error("Unable to save upload image safely");
         result.success = true;
-        result.originalPath = origPath; result.previewPath = prevPath;
-        result.originalBytes = original.bytes.size(); result.previewBytes = preview.bytes.size();
-        result.previewWidth = pw; result.previewHeight = ph;
-        result.message = QStringLiteral("OK (%1 original, %2 preview)")
-                             .arg(original.description, preview.description);
-        if (stage) stage(5, QObject::tr("Completed image"));
+        result.originalPath = destination;
+        result.originalBytes = original.bytes.size();
+        result.message = QStringLiteral("OK (%1)").arg(original.description);
+        if (stage) stage(3, QObject::tr("Finished image"));
     } catch (const Magick::Exception &e) {
         result.message = QString::fromUtf8(e.what());
     } catch (const std::exception &e) {
@@ -432,115 +298,124 @@ inline QString safeTsv(QString s) {
 }
 
 inline Summary batch(const QStringList &files, const QString &outDir,
-                     int maxWidth, int maxHeight, bool downscale,
                      bool allowLossyOriginal, int preferredQuality,
-                     double smoothSigma, double sharpenSigma,
                      const std::shared_ptr<std::atomic_bool> &cancel,
                      const std::function<void(int, const QString &)> &reportStage) {
-    Summary result;
+    Summary summary;
     if (!QDir(outDir).exists() && !QDir().mkpath(outDir)) {
         Result failed; failed.message = "Cannot create output directory";
-        result.rows.append(failed); result.failed = files.size(); return result;
+        summary.rows.append(failed);
+        summary.failed = static_cast<int>(files.size());
+        return summary;
     }
     for (int index = 0; index < static_cast<int>(files.size()); ++index) {
-        if (cancel->load()) { result.cancelled = true; break; }
+        if (cancel->load()) { summary.cancelled = true; break; }
         const QString &file = files.at(index);
-        auto progress = [index, &file, &files, &reportStage](int step, const QString &detail) {
+        auto progress = [index, &file, &files, &reportStage](
+                            int step, const QString &detail) {
             if (!reportStage) return;
-            reportStage(index * 5 + step,
+            reportStage(index * 3 + step,
                 QObject::tr("%1 (%2 of %3) — %4")
                     .arg(QFileInfo(file).fileName())
                     .arg(index + 1)
                     .arg(static_cast<int>(files.size()))
                     .arg(detail));
         };
-        Result row = process(file, outDir, maxWidth, maxHeight, downscale,
-                             allowLossyOriginal, preferredQuality,
-                             smoothSigma, sharpenSigma, cancel, progress);
-        if (row.success) ++result.passed; else ++result.failed;
+        Result row = process(file, outDir, allowLossyOriginal,
+                             preferredQuality, cancel, progress);
+        if (row.success) ++summary.passed; else ++summary.failed;
         if (!row.success)
-            progress(5, QObject::tr("Finished with an error; see export report"));
-        result.rows.append(std::move(row));
-        if (cancel->load()) { result.cancelled = true; break; }
+            progress(3, QObject::tr("Finished with an error; see report"));
+        summary.rows.append(std::move(row));
+        if (cancel->load()) { summary.cancelled = true; break; }
     }
-    const QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss-zzz");
-    result.reportPath = QDir(outDir).filePath("PixelShroom-Upload-Report-" + timestamp + ".tsv");
-    QSaveFile log(result.reportPath);
-    if (log.open(QIODevice::WriteOnly)) {
-        log.write("Source\tStatus\tOriginal bytes\tPreview bytes\tPreview dimensions\tOriginal file\tPreview file\n");
-        for (const auto &row : result.rows) {
-            const QString line = QStringLiteral("%1\t%2\t%3\t%4\t%5x%6\t%7\t%8\n")
-                .arg(safeTsv(row.input),safeTsv(row.message))
-                .arg(row.originalBytes).arg(row.previewBytes).arg(row.previewWidth).arg(row.previewHeight)
-                .arg(safeTsv(row.originalPath),safeTsv(row.previewPath));
-            log.write(line.toUtf8());
+    // Keep diagnostic logs separate from the upload image folder.
+    const QString logsRoot = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation);
+    const QString reportDir = QDir(logsRoot).filePath("upload-reports");
+    if (!logsRoot.isEmpty() && QDir().mkpath(reportDir)) {
+        const QString timestamp = QDateTime::currentDateTime().toString(
+            "yyyyMMdd-hhmmss-zzz");
+        summary.reportPath = QDir(reportDir).filePath(
+            "PixelShroom-Upload-Report-" + timestamp + ".tsv");
+        QSaveFile log(summary.reportPath);
+        if (log.open(QIODevice::WriteOnly)) {
+            log.write("Source\tStatus\tOutput bytes\tOutput image\n");
+            for (const Result &row : summary.rows) {
+                const QString line = QStringLiteral("%1\t%2\t%3\t%4\n")
+                    .arg(safeTsv(row.input), safeTsv(row.message))
+                    .arg(row.originalBytes)
+                    .arg(safeTsv(row.originalPath));
+                log.write(line.toUtf8());
+            }
+            if (!log.commit()) summary.reportPath.clear();
+        } else {
+            summary.reportPath.clear();
         }
-        if (!log.commit()) result.reportPath.clear();
-    } else result.reportPath.clear();
-    return result;
+    }
+    return summary;
 }
 
 inline void start(QWidget *parent, const QStringList &files, const QString &targetDir,
-                  int maxWidth, int maxHeight, bool downscale,
-                  bool allowLossyOriginal, int preferredQuality,
-                  double smoothSigma, double sharpenSigma) {
+                  bool allowLossyOriginal, int preferredQuality) {
     if (files.isEmpty()) {
         QMessageBox::information(parent, QObject::tr("No images"),
-                                 QObject::tr("Import images first, then open Upload-ready."));
+                                 QObject::tr("Check one or more imported images."));
         return;
     }
     if (targetDir.trimmed().isEmpty()) {
         QMessageBox::warning(parent, QObject::tr("Output folder missing"),
-                             QObject::tr("Choose an output folder in the main application first."));
+            QObject::tr("Choose an output directory before website optimization."));
         return;
     }
     const auto cancel = std::make_shared<std::atomic_bool>(false);
-    const int totalSteps = qMax(1, static_cast<int>(files.size()) * 5);
+    const int steps = qMax(1, static_cast<int>(files.size()) * 3);
     auto *progress = new QProgressDialog(
-        QObject::tr("Preparing website upload..."),
-        QObject::tr("Cancel remaining work"), 0, totalSteps, parent);
+        QObject::tr("Preparing full-resolution website images..."),
+        QObject::tr("Cancel remaining work"), 0, steps, parent);
     progress->setAttribute(Qt::WA_DeleteOnClose, false);
     progress->setWindowModality(Qt::WindowModal);
     progress->setMinimumDuration(0);
     progress->setAutoClose(false);
     progress->setAutoReset(false);
-    progress->setValue(0);
     progress->setMinimumWidth(450);
+    progress->setValue(0);
     progress->show();
-    QObject::connect(progress, &QProgressDialog::canceled, parent, [cancel]() { cancel->store(true); });
+    QObject::connect(progress, &QProgressDialog::canceled, parent,
+        [cancel]() { cancel->store(true); });
     auto *watcher = new QFutureWatcher<Summary>(parent);
     const QPointer<QProgressDialog> guard(progress);
     QObject::connect(watcher, &QFutureWatcher<Summary>::finished, parent,
-                     [watcher, guard, parent]() {
-        const Summary report = watcher->result();
+        [watcher, guard, parent]() {
+        const Summary summary = watcher->result();
         if (guard) { guard->close(); guard->deleteLater(); }
-        QStringList problems;
-        for (const auto &row : report.rows)
-            if (!row.success && problems.size() < 6)
-                problems << QFileInfo(row.input).fileName() + ": " + row.message;
-        QString msg = QObject::tr("Optimized: %1    Could not fit/convert: %2")
-                          .arg(report.passed).arg(report.failed);
-        if (report.cancelled) msg += QObject::tr("\nCancelled after the current image.");
-        if (!report.reportPath.isEmpty()) msg += QObject::tr("\n\nDetailed report: %1").arg(report.reportPath);
-        if (!problems.isEmpty()) msg += "\n\n" + problems.join("\n");
-        QMessageBox::information(parent, QObject::tr("Upload-ready results"), msg);
+        QStringList errors;
+        for (const Result &row : summary.rows)
+            if (!row.success && errors.size() < 6)
+                errors << QFileInfo(row.input).fileName() + ": " + row.message;
+        QString msg = QObject::tr("Images prepared: %1    Failed: %2")
+            .arg(summary.passed).arg(summary.failed);
+        if (summary.cancelled)
+            msg += QObject::tr("\nCancelled before the next image.");
+        if (!summary.reportPath.isEmpty())
+            msg += QObject::tr("\n\nDiagnostic report: %1").arg(summary.reportPath);
+        if (!errors.isEmpty()) msg += "\n\n" + errors.join("\n");
+        QMessageBox::information(parent, QObject::tr("Website image results"), msg);
         watcher->deleteLater();
     });
-    const auto reportStage = [watcher, guard, totalSteps](int step, const QString &detail) {
-        // Never touch Qt UI objects directly from the worker thread.
-        QMetaObject::invokeMethod(watcher, [guard, step, totalSteps, detail]() {
+    const auto reportStage = [watcher, guard, steps](
+                                 int step, const QString &detail) {
+        QMetaObject::invokeMethod(watcher, [guard, step, steps, detail]() {
             if (!guard || guard->wasCanceled()) return;
             guard->setLabelText(detail);
-            guard->setValue(qBound(0, step, totalSteps));
+            guard->setValue(qBound(0, step, steps));
         }, Qt::QueuedConnection);
     };
-    watcher->setFuture(QtConcurrent::run([files, targetDir, maxWidth, maxHeight, downscale,
-                                          allowLossyOriginal, preferredQuality,
-                                          smoothSigma, sharpenSigma, cancel, reportStage]() {
-        return batch(files, targetDir, maxWidth, maxHeight, downscale,
-                     allowLossyOriginal, preferredQuality,
-                     smoothSigma, sharpenSigma, cancel, reportStage);
-    }));
+    watcher->setFuture(QtConcurrent::run(
+        [files, targetDir, allowLossyOriginal, preferredQuality, cancel, reportStage]() {
+            return batch(files, targetDir, allowLossyOriginal,
+                         preferredQuality, cancel, reportStage);
+        }));
 }
 
 } // namespace PixelShroomUpload

@@ -371,15 +371,14 @@ void MainWindowImpl::setupPixelShroomControls()
     dpi->setSuffix(tr(" DPI"));
     dpi->setEnabled(printDpi->isChecked());
     printDpi->setToolTip(tr(
-        "Website preparation keeps the source image's embedded DPI. "
-        "This setting is used only by the legacy conversion engine, "
-        "and does not assign a new DPI to a website upload copy."));
+        "Apply selected print DPI to normal Convert output. "
+        "Website optimization preserves the original source's existing DPI."));
     sizeGrid->addWidget(printDpi, 4, 0);
     sizeGrid->addWidget(dpi, 4, 1);
     auto *note = new QLabel(tr(
-        "Upload originals keep source pixels and embedded DPI. Website previews "
-        "use these width/height bounds. The 300-DPI control does not rewrite "
-        "metadata in website copies; verify source DPI before printing."), resizeTab);
+        "Resize and print DPI apply to normal Convert output. "
+        "Website optimization creates a separate full-resolution upload copy "
+        "and preserves the source image's existing pixel dimensions and DPI."), resizeTab);
     note->setWordWrap(true);
     sizeGrid->addWidget(note, 5, 0, 1, 4);
     sizeGrid->setColumnStretch(1, 1);
@@ -582,39 +581,43 @@ void MainWindowImpl::setupPixelShroomControls()
     };
     // This build's primary action prepares website uploads. Avoid implying
     // that the legacy 'Convert to' format controls determine this output.
-    auto updateCodecUi = [this, formatLabel, overrideQuality, qualityLabel,
-                          qualitySlider, qualityNumber, qualityHint, pngLabel,
-                          pngSlider, pngNumber, pngHint, webpLossless,
-                          effortLabel, effortSlider, effortNumber, effortHint,
-                          dithering, metadata, otherHint]() {
-        formatLabel->setText(QObject::tr(
-            "WEBSITE UPLOAD: quality controls the high-quality fallback "
-            "only when the full-size copy exceeds 50 MiB. Click Prepare upload (F5) "
-            "to write files."));
-        // Hide native conversion-only codec controls to prevent confusing
-        // them with the single Website preparation workflow. Keep the old
-        // widgets alive for the legacy engine but do not expose them here.
-        overrideQuality->setVisible(false);
-        qualityLabel->setText(QObject::tr("Original fallback quality"));
-        qualityLabel->setVisible(true);
-        qualitySlider->setVisible(true);
-        qualityNumber->setVisible(true);
-        qualityHint->setVisible(true);
-        qualitySlider->setEnabled(true);
-        qualityNumber->setEnabled(true);
-        pngLabel->setVisible(false);
-        pngSlider->setVisible(false);
-        pngNumber->setVisible(false);
-        pngHint->setVisible(false);
-        webpLossless->setVisible(false);
-        effortLabel->setVisible(false);
-        effortSlider->setVisible(false);
-        effortNumber->setVisible(false);
-        effortHint->setVisible(false);
-        dithering->setVisible(false);
-        metadata->setVisible(false);
-        otherHint->setVisible(false);
-        btnFormatOptions->setVisible(false);
+    auto updateCodecUi = [this, selectedCodec, formatLabel, overrideQuality, qualityLabel,
+                          qualitySlider, qualityNumber, qualityHint, pngLabel, pngSlider,
+                          pngNumber, pngHint, webpLossless, effortLabel, effortSlider,
+                          effortNumber, effortHint, dithering, metadata, otherHint]() {
+        const QString codec = selectedCodec();
+        const bool jpeg = codec == "jpeg";
+        const bool png = codec == "png";
+        const bool webp = codec == "webp";
+        const bool managed = jpeg || png || webp;
+        // A previous JPEG override must not silently switch a lossless WebP preset to lossy.
+        if (webp && webpLossless->isChecked() && overrideQuality->isChecked())
+            overrideQuality->setChecked(false);
+        formatLabel->setText(managed
+          ? QObject::tr("%1 output — controls below apply to the entire batch.").arg(codec.toUpper())
+          : QObject::tr("Choose JPEG, PNG or WebP in 'Convert to' for simple settings."));
+        overrideQuality->setVisible(jpeg || webp);
+        const bool lossyQuality = (jpeg || webp) && !(webp && webpLossless->isChecked());
+        qualityLabel->setVisible(lossyQuality);
+        qualitySlider->setVisible(lossyQuality);
+        qualityNumber->setVisible(lossyQuality);
+        qualityHint->setVisible(lossyQuality);
+        qualitySlider->setEnabled(overrideQuality->isChecked());
+        qualityNumber->setEnabled(overrideQuality->isChecked());
+        pngLabel->setVisible(png);
+        pngSlider->setVisible(png);
+        pngNumber->setVisible(png);
+        pngHint->setVisible(png);
+        webpLossless->setVisible(webp);
+        effortLabel->setVisible(webp);
+        effortSlider->setVisible(webp);
+        effortNumber->setVisible(webp);
+        effortHint->setVisible(webp);
+        dithering->setVisible(webp);
+        metadata->setVisible(managed);
+        otherHint->setVisible(!managed);
+        btnFormatOptions->setVisible(!managed);
+        btnFormatOptions->setToolTip(QObject::tr("Advanced image settings for additional formats"));
     };
     connect(comboWFormats, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [updateCodecUi](int) { updateCodecUi(); });
@@ -660,9 +663,10 @@ void MainWindowImpl::setupPixelShroomControls()
     };
     makeEnhancement(0, tr("Smoothing"), tr("Gaussian smoothing, 0 = off; try 0.2-0.4"), true);
     makeEnhancement(1, tr("Sharpen"), tr("Sharpen after resizing, 0 = off; try 0.3-0.7"), false);
-    auto *enhanceHint = new QLabel(tr("These adjustments apply to the WEBSITE PREVIEW ONLY. "
-        "The full-resolution upload copy and source artwork remain unsharpened and unchanged. "
-        "Both effects are off at 0; strong values can cause blur or halos."), enhanceTab);
+    auto *enhanceHint = new QLabel(tr(
+        "These adjustments apply to normal Convert output. The separate Website "
+        "optimizer preserves the original image detail and dimensions. "
+        "Start gently: too much smoothing removes texture; sharpening adds halos."), enhanceTab);
     enhanceHint->setWordWrap(true);
     enhanceGrid->addWidget(enhanceHint, 2, 0, 1, 3);
     enhanceGrid->setColumnStretch(1, 1);
@@ -680,69 +684,63 @@ void MainWindowImpl::setupPixelShroomControls()
     uploadTitle->setFont(uploadFont);
     uploadLayout->addWidget(uploadTitle);
     auto *uploadExplanation = new QLabel(
-        tr("PREVIEW: under 10 MiB. ORIGINAL: under 50 MiB. "
-           "Lossless mode keeps original pixels and print metadata. "
-           "Optional high-quality compression keeps full dimensions and "
-           "verified DPI/ICC information, but is not pixel-identical."), uploadTab);
+        tr("ONE full-resolution website image per checked source, strictly under 50 MiB. "
+           "No separate preview or thumbnail is created. "
+           "The original source artwork is never overwritten."), uploadTab);
     uploadExplanation->setWordWrap(true);
     uploadLayout->addWidget(uploadExplanation);
-    // Pixel Shroom Phase 19: one shared Resize/Website pixel size.
-    // The main Resize tab owns the values; Website only reads the same widgets.
-    auto *sharedSize = new QLabel(uploadTab);
-    sharedSize->setObjectName("psUploadSharedDimensions");
-    sharedSize->setWordWrap(true);
-    auto updateSharedSize = [width, height, sharedSize]() {
-        sharedSize->setText(QObject::tr("Website preview bounds from Resize: %1 x %2 px. "
-                    "Originals retain source dimensions. Automatic previews may shrink "
-                    "to 2560 px on the longest edge for speed; no upscaling.")
-                    .arg(width->value()).arg(height->value()));
-    };
-    QObject::connect(width, QOverload<int>::of(&QSpinBox::valueChanged),
-                     uploadTab, [updateSharedSize](int) { updateSharedSize(); });
-    QObject::connect(height, QOverload<int>::of(&QSpinBox::valueChanged),
-                     uploadTab, [updateSharedSize](int) { updateSharedSize(); });
-    // Preset selection updates both spinboxes under QSignalBlocker.
-    QObject::connect(preset, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                     uploadTab, [updateSharedSize](int) { updateSharedSize(); });
-    updateSharedSize();
-    uploadLayout->addWidget(sharedSize);
-    auto *allowPreviewDownscale = new QCheckBox(
-        tr("Automatically shrink website previews further if necessary to fit under 10 MiB"), uploadTab);
-    allowPreviewDownscale->setChecked(true);
-    uploadLayout->addWidget(allowPreviewDownscale);
+    auto *uploadPreservation = new QLabel(
+        tr("Website optimization preserves the source pixel dimensions and embedded "
+           "print resolution. If the source already fits, the exported image is an "
+           "identical copy. Larger files can use optional high-quality compression."), uploadTab);
+    uploadPreservation->setWordWrap(true);
+    uploadLayout->addWidget(uploadPreservation);
+
     auto *allowLossyOriginal = new QCheckBox(
-        tr("If upload copy exceeds 50 MiB, use high-quality JPEG/WebP (may change colors)"), uploadTab);
+        tr("Allow high-quality JPEG/WebP if lossless output cannot fit under 50 MiB"), uploadTab);
     allowLossyOriginal->setObjectName("psUploadAllowLossyOriginal");
-    // Every exported file is for the website: enable the high-quality fallback
-    // for upload COPIES by default, but never modify the user's source artwork.
-    // The user may disable this for strictly lossless export.
     allowLossyOriginal->setChecked(
         glassSettings.value("website/compressLargeOriginal", true).toBool());
-    connect(allowLossyOriginal, &QCheckBox::toggled, this, [](bool enabled) {
-        QSettings saved("Pixel Shroom Studio", "Pixel Shroom Image Studio");
-        saved.setValue("website/compressLargeOriginal", enabled);
-    });
-    allowLossyOriginal->setToolTip(
-        tr("Full original dimensions are preserved, but some color values may change. "
-           "16-bit originals remain lossless-only. The original source file is never overwritten."));
+    allowLossyOriginal->setToolTip(tr(
+        "A lossy upload COPY may change color values, never source dimensions. "
+        "16-bit artwork remains lossless-only; metadata verification can reject candidates."));
     uploadLayout->addWidget(allowLossyOriginal);
-    auto *uploadQualityHint = new QLabel(
-        tr("The Compress quality value is used only if optional full-resolution "
-           "compression is needed. Lossless copies preserve pixels. Lossy "
-           "copies retain full dimensions and verified DPI/ICC information."), uploadTab);
-    uploadQualityHint->setWordWrap(true);
-    uploadLayout->addWidget(uploadQualityHint);
-    auto *uploadActionHint = new QLabel(
-        tr("Click 'Prepare upload' in the main toolbar (F5) to create a "
-           "full-resolution original and a web preview for each checked image."), uploadTab);
-    uploadActionHint->setWordWrap(true);
-    uploadActionHint->setObjectName("psUploadActionHint");
-    uploadLayout->addWidget(uploadActionHint);
+    connect(allowLossyOriginal, &QCheckBox::toggled, this, [](bool enabled) {
+        QSettings settings("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+        settings.setValue("website/compressLargeOriginal", enabled);
+    });
+
+    auto *websiteQualityRow = new QHBoxLayout();
+    websiteQualityRow->addWidget(new QLabel(tr("Website compression quality"), uploadTab));
+    auto *websiteQuality = new QSpinBox(uploadTab);
+    websiteQuality->setObjectName("psWebsiteQuality");
+    websiteQuality->setRange(82, 98);
+    websiteQuality->setValue(qBound(82,
+        glassSettings.value("website/quality", 90).toInt(), 98));
+    websiteQuality->setToolTip(tr("Independent of JPEG/WebP settings on Compress. "
+        "Used only when the full-resolution website copy exceeds 50 MiB."));
+    websiteQualityRow->addWidget(websiteQuality);
+    websiteQualityRow->addStretch(1);
+    uploadLayout->addLayout(websiteQualityRow);
+    websiteQuality->setEnabled(allowLossyOriginal->isChecked());
+    connect(allowLossyOriginal, &QCheckBox::toggled,
+            websiteQuality, &QWidget::setEnabled);
+    connect(websiteQuality, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [](int value) {
+        QSettings settings("Pixel Shroom Studio", "Pixel Shroom Image Studio");
+        settings.setValue("website/quality", value);
+    });
+
+    auto *uploadAction = new QPushButton(tr("Optimize for website"), uploadTab);
+    uploadAction->setObjectName("psUploadAction");
+    uploadAction->setMinimumHeight(38);
+    uploadLayout->addWidget(uploadAction);
     auto *uploadHint = new QLabel(
-        tr("Exports are saved as __preview and __original pairs. Your source images "
-           "are never overwritten. With fallback disabled, oversized originals fail "
-           "rather than lose quality. With fallback enabled, compressed originals "
-           "are explicitly labeled as lossy in the export report."), uploadTab);
+        tr("Click Optimize for website to export only the checked image(s) to the "
+           "chosen output folder as __original files. This function is separate "
+           "from Convert, with its own progress and results report. "
+           "If the 50 MiB limit cannot be met without violating selected "
+           "quality or metadata rules, the image is reported as unsuccessful."), uploadTab);
     uploadHint->setWordWrap(true);
     uploadLayout->addWidget(uploadHint);
     uploadLayout->addStretch(1);
@@ -1041,19 +1039,10 @@ void MainWindowImpl::setupPixelShroomControls()
     menu_Edit->addAction(settingsMenuAction);
     connect(settingsMenuAction, &QAction::triggered,
             settingsDialog, openSettingsWindow);
-    // One primary action for the website's full-resolution and preview files.
-    actionConvert->setText(tr("Prepare upload"));
-    actionConvert->setToolTip(tr("Create a full-resolution upload copy under 50 MiB "
-                                 "and a website preview under 10 MiB (F5)."));
-    connect(actionConvert, &QAction::triggered, this,
-            [this, width, height, allowPreviewDownscale, allowLossyOriginal, qualityNumber]() {
-        // A 1-pixel value can be present before images have been selected;
-        // never accidentally create unusably tiny website previews.
-        if (width->value() < 64 || height->value() < 64) {
-            QMessageBox::warning(this, tr("Resize dimensions needed"),
-                tr("Choose width and height of at least 64 px in Resize before Website optimization."));
-            return;
-        }
+    // Website optimization runs only from this button. The main Convert
+    // toolbar action remains connected to the existing converter.
+    connect(uploadAction, &QPushButton::clicked, this,
+            [this, allowLossyOriginal, websiteQuality]() {
         QStringList sources;
         // Website export follows the same checked queue items as Convert.
         // Queue sorting is disabled, so tree rows correspond to iAList rows.
@@ -1097,10 +1086,7 @@ void MainWindowImpl::setupPixelShroomControls()
             destination = firstDirectory;
         }
         PixelShroomUpload::start(this, sources, destination,
-                                width->value(), height->value(),
-                                allowPreviewDownscale->isChecked(),
-                                allowLossyOriginal->isChecked(), qualityNumber->value(),
-                                m_psSmoothSigma, m_psSharpenSigma);
+                                allowLossyOriginal->isChecked(), websiteQuality->value());
     });
 
 
@@ -1371,9 +1357,9 @@ void MainWindowImpl::createActions()
     connect(actionRemoveItems, SIGNAL(triggered()), this, SLOT(removeItems()));
     connect(actionRemoveAllItems, SIGNAL(triggered()), this, SLOT(removeAllItems()));
 
-    // The primary action is wired to website preparation after Image Studio
-    // builds its UI. Keep the legacy converter for rollback, but do not run
-    // a separate conversion process from this toolbar action.
+    // Preserve original conversion behavior and all Resize/Compress/Enhance
+    // settings. Website optimization has its own action and processing path.
+    connect(actionConvert, SIGNAL(triggered()), this, SLOT(elabora()));
 
     connect(actionInfo, SIGNAL(triggered()), this, SLOT(about()));
     connect(actionDonatePaypal, SIGNAL(triggered()), this, SLOT(openPaypalLink()));
