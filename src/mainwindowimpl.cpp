@@ -370,9 +370,16 @@ void MainWindowImpl::setupPixelShroomControls()
     dpi->setValue(spin_resX->value() >= 72 ? qRound(spin_resX->value()) : 300);
     dpi->setSuffix(tr(" DPI"));
     dpi->setEnabled(printDpi->isChecked());
+    printDpi->setToolTip(tr(
+        "Website preparation keeps the source image's embedded DPI. "
+        "This setting is used only by the legacy conversion engine, "
+        "and does not assign a new DPI to a website upload copy."));
     sizeGrid->addWidget(printDpi, 4, 0);
     sizeGrid->addWidget(dpi, 4, 1);
-    auto *note = new QLabel(tr("Print presets use 300 DPI. Aspect-fit prevents stretching; output may not fill a different-shaped canvas."), resizeTab);
+    auto *note = new QLabel(tr(
+        "Upload originals keep source pixels and embedded DPI. Website previews "
+        "use these width/height bounds. The 300-DPI control does not rewrite "
+        "metadata in website copies; verify source DPI before printing."), resizeTab);
     note->setWordWrap(true);
     sizeGrid->addWidget(note, 5, 0, 1, 4);
     sizeGrid->setColumnStretch(1, 1);
@@ -686,7 +693,8 @@ void MainWindowImpl::setupPixelShroomControls()
     sharedSize->setWordWrap(true);
     auto updateSharedSize = [width, height, sharedSize]() {
         sharedSize->setText(QObject::tr("Website preview bounds from Resize: %1 x %2 px. "
-                    "Full-resolution originals retain their own pixels. Previews never upscale.")
+                    "Originals retain source dimensions. Automatic previews may shrink "
+                    "to 2560 px on the longest edge for speed; no upscaling.")
                     .arg(width->value()).arg(height->value()));
     };
     QObject::connect(width, QOverload<int>::of(&QSpinBox::valueChanged),
