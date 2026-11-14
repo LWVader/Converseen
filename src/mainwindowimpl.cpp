@@ -85,6 +85,9 @@ MainWindowImpl::MainWindowImpl(QWidget * parent)
     : QMainWindow(parent)
 {
     setupUi(this);
+    // Remove obsolete per-export diagnostic TSV files from older versions.
+    // Only PixelShroom-Upload-Report-*.tsv in AppData/upload-reports is touched.
+    PixelShroomUpload::cleanupLegacyReports();
     // PIXEL SHROOM BRANDING 8.1: hide original upstream donation action.
     actionDonatePaypal->setVisible(false);
 
