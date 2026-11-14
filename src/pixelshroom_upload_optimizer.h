@@ -20,6 +20,8 @@
 #include <QtMath>
 #include <algorithm>
 #include <atomic>
+#include <functional>
+#include <QMetaObject>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -215,64 +217,96 @@ inline QString uniqueStem(const QString &baseName, const QString &outDir) {
     // Pixel Shroom Phase 19: shared Resize bounds
 inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &original,
                                    const QString &suffix, int maxWidth, int maxHeight,
-                                   bool downscale, int &width, int &height) {
-    Magick::Image preview(input);
+                                   bool downscale, int &width, int &height,
+                                   const std::shared_ptr<std::atomic_bool> &cancel,
+                                   const std::function<void(const QString &)> &stage) {
     const int iw = int(input.columns()), ih = int(input.rows());
-    // Website uses the same bounding dimensions as the Resize tab. Do not
-    // upscale a source that is already smaller; keep original aspect ratio.
     const int targetW = std::max(1, std::min(20000, maxWidth));
     const int targetH = std::max(1, std::min(20000, maxHeight));
-    const double scale = std::min({1.0, double(targetW) / iw, double(targetH) / ih});
+    if (original.size() < PreviewLimit && iw <= targetW && ih <= targetH) {
+        // An already-valid original is also a valid, pixel-identical preview.
+        width = iw;
+        height = ih;
+        return {original, "." + suffix, "unchanged source", true};
+    }
+    Magick::Image preview(input);
+    double scale = std::min({1.0, double(targetW) / iw, double(targetH) / ih});
+    // Prevent large input artwork from causing minutes of pointless
+    // full-resolution preview encoding when automatic shrinking is enabled.
+    if (downscale && original.size() >= PreviewLimit) {
+        const double fastPreviewEdge = 2560.0;
+        scale = std::min(scale, fastPreviewEdge / std::max(iw, ih));
+    }
     if (scale < 1.0) {
+        if (stage) stage(QObject::tr("Resizing website preview"));
         preview.filterType(Magick::LanczosFilter);
-        preview.resize(Magick::Geometry(size_t(std::max(1, qRound(iw*scale))),
-                                        size_t(std::max(1, qRound(ih*scale)))));
+        preview.resize(Magick::Geometry(size_t(std::max(1, qRound(iw * scale))),
+                                        size_t(std::max(1, qRound(ih * scale)))));
     }
-    // Prefer highest resolution that meets the preview cap. At that resolution,
-    // choose the smallest available lossless encoder output.
-    for (int attempt=0; attempt<16; ++attempt) {
-        BlobCandidate best;
-        const bool sameSize = preview.columns() == input.columns() && preview.rows() == input.rows();
-        if (sameSize && original.size() < PreviewLimit &&
-            (suffix == "png" || suffix == "jpg" || suffix == "jpeg" || suffix == "webp")) {
-            best = {original, "." + suffix, "unchanged source", true};
+
+    // One fast lossless codec at each size, instead of two maximum-effort
+    // encodes at up to 16 sizes. Honor 16-bit sources with PNG.
+    const QString codec = preview.depth() > 8 ? QStringLiteral("png")
+                                              : QStringLiteral("webp");
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        if (cancel && cancel->load())
+            throw std::runtime_error("Cancelled during preview optimization");
+        if (stage)
+            stage(QObject::tr("Encoding preview (%1 x %2, attempt %3)")
+                    .arg(preview.columns()).arg(preview.rows()).arg(attempt + 1));
+        try {
+            Magick::Image image(preview);
+            if (codec == "webp") {
+                image.magick("WEBP");
+                image.defineValue("webp", "lossless", "true");
+                image.defineValue("webp", "method", "2");
+                image.quality(100);
+            } else {
+                image.magick("PNG");
+                image.defineValue("png", "compression-level", "3");
+            }
+            Magick::Blob blob;
+            image.write(&blob);
+            if (blob.length() < static_cast<size_t>(PreviewLimit)) {
+                BlobCandidate result;
+                result.bytes = QByteArray(static_cast<const char *>(blob.data()),
+                                           static_cast<qsizetype>(blob.length()));
+                result.suffix = codec == "webp" ? ".webp" : ".png";
+                result.description = codec == "webp" ? "WebP lossless" : "PNG lossless";
+                result.valid = !result.bytes.isEmpty();
+                width = int(preview.columns());
+                height = int(preview.rows());
+                return result;
+            }
+        } catch (const Magick::Exception &) {
+            // Try a smaller resolution if the codec fails.
         }
-        for (const QString codec : {QStringLiteral("webp"), QStringLiteral("png")}) {
-            // WebP lossless has 8-bit RGBA semantics; PNG is the precision fallback.
-            if (codec == "webp" && preview.depth() > 8) continue;
-            try {
-                BlobCandidate candidate = encode(preview, codec);
-                if (candidate.valid && candidate.bytes.size() < PreviewLimit &&
-                    (!best.valid || candidate.bytes.size() < best.bytes.size()))
-                    best = std::move(candidate);
-            } catch (const Magick::Exception &) { /* try alternate lossless format */ }
-        }
-        if (best.valid && best.bytes.size() < PreviewLimit) {
-            width = int(preview.columns()); height = int(preview.rows());
-            return best;
-        }
-        if (!downscale) break;
-        if (std::max(preview.columns(), preview.rows()) <= 256) break;
-        const size_t w = std::max<size_t>(1, size_t(std::floor(preview.columns()*0.80)));
-        const size_t h = std::max<size_t>(1, size_t(std::floor(preview.rows()*0.80)));
+        if (!downscale || std::max(preview.columns(), preview.rows()) <= 256) break;
+        const size_t w = std::max<size_t>(1, size_t(std::floor(preview.columns() * 0.70)));
+        const size_t h = std::max<size_t>(1, size_t(std::floor(preview.rows() * 0.70)));
         preview.filterType(Magick::LanczosFilter);
-        preview.resize(Magick::Geometry(w,h));
+        preview.resize(Magick::Geometry(w, h));
     }
-    throw std::runtime_error("Preview cannot reach 10 MiB within selected resolution rules");
+    throw std::runtime_error("Preview cannot reach 10 MiB. Reduce Resize dimensions or allow automatic preview shrinking.");
 }
 
 inline Result process(const QString &sourcePath, const QString &targetDir,
                       int maxWidth, int maxHeight, bool downscale,
-                      bool allowLossyOriginal, int preferredQuality) {
+                      bool allowLossyOriginal, int preferredQuality,
+                      const std::shared_ptr<std::atomic_bool> &cancel,
+                      const std::function<void(int, const QString &)> &stage) {
     Result result;
     result.input = sourcePath;
     try {
+        if (stage) stage(0, QObject::tr("Reading source image"));
         const QFileInfo source(sourcePath);
         const QString suffix = source.suffix().toLower();
         if (!source.isFile()) throw std::runtime_error("Source file no longer exists");
         if (!(suffix == "png" || suffix == "jpeg" || suffix == "jpg" || suffix == "webp"))
             throw std::runtime_error("Only PNG, JPEG and WebP still images are supported for upload export");
         const QByteArray bytes = readSource(source.absoluteFilePath());
+        if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
+        if (stage) stage(1, QObject::tr("Decoding image and checking dimensions"));
         const Magick::Blob inputBlob(bytes.constData(), size_t(bytes.size()));
         Magick::Image input(inputBlob);
         input.autoOrient(); // source is not mutated; preview follows its orientation
@@ -281,20 +315,58 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
         if (input.columns() > 20000 || input.rows() > 20000 ||
             input.columns() * input.rows() > 120000000ULL)
             throw std::runtime_error("Image exceeds the 120-megapixel batch safety limit");
-        // Preserve the exact input file when possible; compare other lossless
-        // encodings only if re-reading proves pixel/profile/DPI equivalence.
+        // Do not recompress an original that ALREADY meets the upload cap.
+        // It is the exact source file, preserving every byte and profile.
         BlobCandidate original {bytes, "." + suffix, "unchanged source", true};
-        // For EXIF-oriented images, avoid substituting auto-oriented decoded pixels
-        // in the ORIGINAL: original remains a byte-for-byte copy.
-        Magick::Image raw(inputBlob);
-        for (const QString codec : {QStringLiteral("png"), QStringLiteral("webp")}) {
-            if (codec == "webp" && raw.depth() > 8) continue;
-            try {
-                BlobCandidate candidate = encode(raw, codec);
-                if (candidate.valid && candidate.bytes.size() < original.bytes.size() &&
-                    originalEquivalent(raw, candidate))
-                    original = std::move(candidate);
-            } catch (const Magick::Exception &) { /* the original source remains safe */ }
+        if (stage) stage(2, QObject::tr("Preparing original (50 MiB limit)"));
+        if (original.bytes.size() >= OriginalLimit) {
+            Magick::Image raw(inputBlob);
+            // Lossless attempts are limited and fast; avoid 100%-effort
+            // PNG/WebP work on multi-megapixel sources without a size need.
+            if (suffix == "png") {
+                try {
+                    if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
+                    if (stage) stage(2, QObject::tr("Trying fast lossless PNG"));
+                    Magick::Image compressed(raw);
+                    compressed.magick("PNG");
+                    compressed.defineValue("png", "compression-level", "3");
+                    Magick::Blob blob;
+                    compressed.write(&blob);
+                    if (blob.length() < static_cast<size_t>(OriginalLimit)) {
+                        BlobCandidate candidate;
+                        candidate.bytes = QByteArray(static_cast<const char *>(blob.data()),
+                                                     static_cast<qsizetype>(blob.length()));
+                        candidate.suffix = ".png";
+                        candidate.description = "PNG lossless";
+                        candidate.valid = !candidate.bytes.isEmpty();
+                        if (originalEquivalent(raw, candidate)) original = std::move(candidate);
+                    }
+                } catch (const Magick::Exception &) { /* try selected fallback */ }
+            }
+            if (original.bytes.size() >= OriginalLimit && allowLossyOriginal && raw.depth() <= 8) {
+#if MagickLibVersion < 0x700
+                const bool opaque = !raw.matte();
+#else
+                const bool opaque = raw.isOpaque();
+#endif
+                const QString codec = opaque ? QStringLiteral("jpeg")
+                                             : QStringLiteral("webp");
+                const int ceiling = qBound(82, preferredQuality, 98);
+                for (const int quality : {ceiling, 94, 90, 86, 82}) {
+                    if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
+                    if (quality > ceiling) continue;
+                    if (stage) stage(2, QObject::tr("Compressing original as %1 at quality %2")
+                                               .arg(codec.toUpper()).arg(quality));
+                    try {
+                        BlobCandidate candidate = encodeLossy(raw, codec, quality);
+                        if (candidate.valid && candidate.bytes.size() < OriginalLimit &&
+                            lossyMetadataOK(raw, candidate)) {
+                            original = std::move(candidate);
+                            break;
+                        }
+                    } catch (const Magick::Exception &) { /* try next quality */ }
+                }
+            }
         }
         if (original.bytes.size() >= OriginalLimit && allowLossyOriginal) {
             // A photograph or opaque 8-bit artwork can often reach 50 MiB
@@ -326,10 +398,16 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
                 "Original cannot fit under 50 MiB with the selected fidelity settings. "
                 "Enable the optional high-quality original compression under Website, "
                 "or use a smaller source. No source pixels were changed.");
-        int pw=0, ph=0;
-        BlobCandidate preview = choosePreview(input, bytes, suffix, maxWidth, maxHeight, downscale, pw, ph);
+        if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
+        if (stage) stage(3, QObject::tr("Preparing website preview (10 MiB limit)"));
+        int pw = 0, ph = 0;
+        BlobCandidate preview = choosePreview(input, bytes, suffix, maxWidth, maxHeight,
+             downscale, pw, ph, cancel,
+             [stage](const QString &detail) { if (stage) stage(3, detail); });
         if (preview.bytes.size() >= PreviewLimit)
             throw std::runtime_error("Preview exceeds the 10 MiB limit");
+        if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
+        if (stage) stage(4, QObject::tr("Saving original and preview"));
         const QString stem = uniqueStem(cleanStem(source.completeBaseName()), targetDir);
         const QDir dir(targetDir);
         const QString origPath = dir.filePath(stem + "__original" + original.suffix);
@@ -346,6 +424,7 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
         result.previewWidth = pw; result.previewHeight = ph;
         result.message = QStringLiteral("OK (%1 original, %2 preview)")
                              .arg(original.description, preview.description);
+        if (stage) stage(5, QObject::tr("Completed image"));
     } catch (const Magick::Exception &e) {
         result.message = QString::fromUtf8(e.what());
     } catch (const std::exception &e) {
