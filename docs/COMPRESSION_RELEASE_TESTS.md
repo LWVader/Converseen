@@ -33,6 +33,6 @@ magick identify -format "%wx%h %x %y %[units]\n" output.png
 py -3 tests\verify_website_export.py --source "C:\art\source.png" --original "C:\art\processed\source__original.jpg"
 ```
 
-6. Confirm the TSV diagnostic report is stored separately in the application's AppData directory.
+6. Confirm no new TSV reports are created. Existing `PixelShroom-Upload-Report-*.tsv` files are removed from the app's AppData `upload-reports` folder at startup, without deleting other application files. Failed image messages must remain visible in the results dialog.
 
 See [WEBSITE_ONLY_EXPORT_RELEASE_TESTS.md](WEBSITE_ONLY_EXPORT_RELEASE_TESTS.md) for the complete runtime checklist.
