@@ -1,0 +1,147 @@
+name: Pixel Shroom — Windows portable and installer
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pixel-shroom-windows-package.yml'
+      - 'src/**'
+      - 'ui/**'
+      - 'res/**'
+      - 'resources.qrc'
+      - 'CMakeLists.txt'
+      - 'pixel_shroom_phase8_package.py'
+      - 'build_pixel_shroom_installer.py'
+      - 'PixelShroomImageStudio.iss'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build portable ZIP + installer
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout merged application source
+        uses: actions/checkout@v5
+
+      - name: Install MSYS2 UCRT64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
+            mingw-w64-ucrt-x86_64-imagemagick
+
+      - name: Configure portable-aware application
+        shell: msys2 {0}
+        run: |
+          test "$MSYSTEM" = "UCRT64"
+          cmake -S . -B build-portable -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_QT6=ON \
+            -DDISABLE_CHECK_UPDATES=ON \
+            '-DCMAKE_CXX_FLAGS=-DMAGICKCORE_HDRI_ENABLE=1 -DMAGICKCORE_QUANTUM_DEPTH=16 -DPIXELSHROOM_PORTABLE_BUILD'
+          echo "PIXELSHROOM_UCRT_ROOT=$(cygpath -w /ucrt64)" >> "$GITHUB_ENV"
+
+      - name: Compile Windows application
+        shell: msys2 {0}
+        run: |
+          cmake --build build-portable --parallel 4
+          test -s build-portable/converseen.exe
+
+      - name: Set up native Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Stage full portable runtime and create portable ZIP
+        shell: pwsh
+        run: |
+          python .\pixel_shroom_phase8_package.py --ucrt "$env:PIXELSHROOM_UCRT_ROOT"
+          if ($LASTEXITCODE -ne 0) { throw "Portable packaging failed" }
+          $folder = "dist/PixelShroomImageStudio-Portable"
+          $zip = "dist/PixelShroomImageStudio-Portable-Win64.zip"
+          if (-not (Test-Path "$folder/PixelShroomImageStudio.exe")) { throw "Missing portable EXE" }
+          if (-not (Test-Path $zip)) { throw "Missing portable ZIP" }
+
+      - name: Test portable executable with minimal process environment
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $portable = (Resolve-Path "dist/PixelShroomImageStudio-Portable").Path
+          $oldPath = $env:PATH
+          try {
+            $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+            & "$portable\PixelShroomImageStudio.exe" -p > "$env:RUNNER_TEMP\ps-formats.txt" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              Get-Content "$env:RUNNER_TEMP\ps-formats.txt"
+              throw "Portable supported-formats smoke test failed"
+            }
+          } finally {
+            $env:PATH = $oldPath
+          }
+          if (-not (Test-Path "$env:RUNNER_TEMP\ps-formats.txt")) { throw "Formats output missing" }
+
+      - name: Install or locate Inno Setup compiler
+        shell: pwsh
+        run: |
+          $paths = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 7\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $found = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $found) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed" }
+          }
+
+      - name: Build Inno Setup installer from verified portable folder
+        shell: pwsh
+        run: |
+          python .\build_pixel_shroom_installer.py --build --version 1.0.0
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed" }
+          if (-not (Test-Path "dist/installer/PixelShroomImageStudio-Setup-1.0.0-Win64.exe")) {
+            throw "Installer executable missing"
+          }
+
+      - name: Verify both deliverables and write checksums
+        shell: pwsh
+        run: |
+          $zip = "dist/PixelShroomImageStudio-Portable-Win64.zip"
+          $setup = "dist/installer/PixelShroomImageStudio-Setup-1.0.0-Win64.exe"
+          $checks = @()
+          foreach ($file in @($zip, $setup)) {
+            if ((Get-Item $file).Length -lt 100000) { throw "Unexpectedly small file: $file" }
+            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
+            $checks += "$hash  $([IO.Path]::GetFileName($file))"
+          }
+          New-Item -ItemType Directory -Force -Path "dist/release-check" | Out-Null
+          $checks | Set-Content -Encoding ascii "dist/release-check/SHA256SUMS.txt"
+          Get-Content "dist/release-check/SHA256SUMS.txt"
+
+      - name: Upload ZIP, installer and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: PixelShroomImageStudio-v1.0.0-Win64-build-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            dist/PixelShroomImageStudio-Portable-Win64.zip
+            dist/installer/PixelShroomImageStudio-Setup-1.0.0-Win64.exe
+            dist/release-check/SHA256SUMS.txt
+
+# Build artifacts for testing. Not code-signed or published as an official release.
+# Graphic interface, conversion, DPI and installer install/uninstall must be tested
+# on a real clean Windows environment before release.
