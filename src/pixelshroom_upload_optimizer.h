@@ -371,31 +371,6 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
                 }
             }
         }
-        if (original.bytes.size() >= OriginalLimit && allowLossyOriginal) {
-            // A photograph or opaque 8-bit artwork can often reach 50 MiB
-            // at high quality without changing its pixel dimensions.
-            // 16-bit originals are not silently reduced to 8-bit.
-            if (raw.depth() <= 8) {
-                // An alpha channel can exist even when all pixels are opaque.
-                // Encode fully opaque artwork as JPEG; preserve actual
-                // transparency via WebP when needed.
-                const QString codec = raw.isOpaque() ? QStringLiteral("jpeg")
-                                                      : QStringLiteral("webp");
-                // Highest acceptable quality wins; never drop below 82.
-                const int ceiling = qBound(82, preferredQuality, 98);
-                for (const int quality : {ceiling, 94, 90, 86, 82}) {
-                    if (quality > ceiling) continue;
-                    try {
-                        BlobCandidate candidate = encodeLossy(raw, codec, quality);
-                        if (candidate.valid && candidate.bytes.size() < OriginalLimit &&
-                            lossyMetadataOK(raw, candidate)) {
-                            original = std::move(candidate);
-                            break;
-                        }
-                    } catch (const Magick::Exception &) { /* test next quality */ }
-                }
-            }
-        }
         if (original.bytes.size() >= OriginalLimit)
             throw std::runtime_error(
                 "Original cannot fit under 50 MiB with the selected fidelity settings. "
