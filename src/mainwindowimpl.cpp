@@ -34,7 +34,6 @@
 #include <QSize>
 #include <QTabWidget>
 #include <QTabBar>
-#include <QDialog>
 #include "pixelshroom_phase6.h"
 #include "pixelshroom_phase7.h"
 #include "pixelshroom_liquid_glass_theme.h"
@@ -48,7 +47,6 @@
 #include <QColor>
 #include "pixelshroom_upload_optimizer.h"
 #include <QApplication>
-#include <QImageReader>
 #include <QPixmap>
 #include <QFileInfo>
 #include <QDesktopServices>
