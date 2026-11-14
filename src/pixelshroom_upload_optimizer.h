@@ -441,18 +441,32 @@ inline QString safeTsv(QString s) {
 inline Summary batch(const QStringList &files, const QString &outDir,
                      int maxWidth, int maxHeight, bool downscale,
                      bool allowLossyOriginal, int preferredQuality,
-                     const std::shared_ptr<std::atomic_bool> &cancel) {
+                     const std::shared_ptr<std::atomic_bool> &cancel,
+                     const std::function<void(int, const QString &)> &reportStage) {
     Summary result;
     if (!QDir(outDir).exists() && !QDir().mkpath(outDir)) {
         Result failed; failed.message = "Cannot create output directory";
         result.rows.append(failed); result.failed = files.size(); return result;
     }
-    for (const QString &file : files) {
+    for (int index = 0; index < static_cast<int>(files.size()); ++index) {
         if (cancel->load()) { result.cancelled = true; break; }
+        const QString &file = files.at(index);
+        auto progress = [index, &file, &files, &reportStage](int step, const QString &detail) {
+            if (!reportStage) return;
+            reportStage(index * 5 + step,
+                QObject::tr("%1 (%2 of %3) — %4")
+                    .arg(QFileInfo(file).fileName())
+                    .arg(index + 1)
+                    .arg(static_cast<int>(files.size()))
+                    .arg(detail));
+        };
         Result row = process(file, outDir, maxWidth, maxHeight, downscale,
-                             allowLossyOriginal, preferredQuality);
+                             allowLossyOriginal, preferredQuality, cancel, progress);
         if (row.success) ++result.passed; else ++result.failed;
+        if (!row.success)
+            progress(5, QObject::tr("Finished with an error; see export report"));
         result.rows.append(std::move(row));
+        if (cancel->load()) { result.cancelled = true; break; }
     }
     const QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss-zzz");
     result.reportPath = QDir(outDir).filePath("PixelShroom-Upload-Report-" + timestamp + ".tsv");
@@ -485,12 +499,17 @@ inline void start(QWidget *parent, const QStringList &files, const QString &targ
         return;
     }
     const auto cancel = std::make_shared<std::atomic_bool>(false);
-    auto *progress = new QProgressDialog(QObject::tr("Optimizing %1 images for upload...").arg(files.size()),
-                                         QObject::tr("Cancel after current image"), 0, 0, parent);
+    const int totalSteps = qMax(1, static_cast<int>(files.size()) * 5);
+    auto *progress = new QProgressDialog(
+        QObject::tr("Preparing website upload..."),
+        QObject::tr("Cancel remaining work"), 0, totalSteps, parent);
     progress->setAttribute(Qt::WA_DeleteOnClose, false);
     progress->setWindowModality(Qt::WindowModal);
     progress->setMinimumDuration(0);
     progress->setAutoClose(false);
+    progress->setAutoReset(false);
+    progress->setValue(0);
+    progress->setMinimumWidth(450);
     progress->show();
     QObject::connect(progress, &QProgressDialog::canceled, parent, [cancel]() { cancel->store(true); });
     auto *watcher = new QFutureWatcher<Summary>(parent);
@@ -511,10 +530,18 @@ inline void start(QWidget *parent, const QStringList &files, const QString &targ
         QMessageBox::information(parent, QObject::tr("Upload-ready results"), msg);
         watcher->deleteLater();
     });
+    const auto reportStage = [watcher, guard, totalSteps](int step, const QString &detail) {
+        // Never touch Qt UI objects directly from the worker thread.
+        QMetaObject::invokeMethod(watcher, [guard, step, totalSteps, detail]() {
+            if (!guard || guard->wasCanceled()) return;
+            guard->setLabelText(detail);
+            guard->setValue(qBound(0, step, totalSteps));
+        }, Qt::QueuedConnection);
+    };
     watcher->setFuture(QtConcurrent::run([files, targetDir, maxWidth, maxHeight, downscale,
-                                          allowLossyOriginal, preferredQuality, cancel]() {
+                                          allowLossyOriginal, preferredQuality, cancel, reportStage]() {
         return batch(files, targetDir, maxWidth, maxHeight, downscale,
-                     allowLossyOriginal, preferredQuality, cancel);
+                     allowLossyOriginal, preferredQuality, cancel, reportStage);
     }));
 }
 
