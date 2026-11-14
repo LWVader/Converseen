@@ -1,106 +1,88 @@
-# Pixel Shroom Converseen — Phase 2 UI Update
+# Pixel Shroom Image Studio
 
-Phase 2 is a focused upgrade for an **existing Converseen fork with Phase 1 already installed and working**. It is not a standalone application or executable.
+**Pixel Shroom Image Studio** is the Windows-focused image-processing application maintained by [Pixel Shroom Studio](https://www.pixelshroomstudio.com/), based on the open-source Converseen project.
 
-## What changed
+It supports batch image conversion and print preparation with Qt6 and ImageMagick. It also includes a separate website upload optimizer. The executable and source retain applicable Converseen/GPL attribution and license requirements.
 
-### 1. Conversion Status window
+## Two distinct image workflows
 
-- Increase initial window size to 760 × 420 with a 640 × 340 minimum.
-- Make the **Image** column stretch and keep **Status** in its own fixed-width column.
-- Truncate visually with a middle ellipsis instead of drawing long filenames through the status column.
-- Show the full filename and full status in tooltips when hovering over rows.
-- Preserve existing batch status, close, and abort behavior.
+### 1. Convert (toolbar / F5)
 
-### 2. Pixel Shroom | Image Studio
+**Convert** remains the normal image conversion engine. The original conversion settings are preserved, including:
 
-Replaces the cramped Phase 1 single-row panel with dark, blue-accented, Squoosh-inspired tabs:
+- Output format (JPEG, PNG, WebP and other available ImageMagick formats)
+- Resize presets, exact pixel dimensions, aspect-ratio options and resampling filters
+- JPEG/WebP quality, WebP lossless, PNG compression and format-specific settings
+- Smoothing and sharpening adjustments, output metadata and optional print DPI
+- Destination directory, file naming and overwrite preferences
 
-**Resize** — Preset dropdown, editable width/height in pixels, aspect-fit toggle, resize filter (Automatic/Lanczos/Mitchell/Catrom/Triangle), print-resolution checkbox and DPI setting.
+The **Convert** action does not automatically apply the website file-size limit.
 
-**Compress** — Checkbox-controlled JPEG/WebP quality override, linked quality slider and numerical value (1–100), plus an Advanced button to open the existing Converseen quality/format dialog. PNG keeps its native lossless settings. When the quality override is enabled, the original Phase 1 conversion logic switches WebP to lossy (by design).
+### 2. Website → Optimize for website
 
-**Enhance** — Separate sliders and numbers for Gaussian smoothing and sharpening (0.0–2.0 sigma; **0 = off**). Phase 1's converter still applies these opt-in enhancements. Smoothing here is an image blur filter, **not the same control** as MozJPEG's compressor-specific smoothing setting in Squoosh.
+This is a **separate action** for images that will be uploaded to the Pixel Shroom Studio website. It processes **checked images** in the queue and saves **exactly one image per input**:
 
-A **Hide controls** toggle collapses the editor to leave more room for the image list. Existing advanced/native Converseen controls remain available.
+- A full-resolution `__original` upload copy, **strictly smaller than 50 MiB**
+- **No second preview or thumbnail file**
+- Original source dimensions and existing print-resolution metadata preserved
+- Original source files are never overwritten
+- A source already below 50 MiB is copied byte-for-byte
+- A too-large original may be compressed at the chosen *Website* quality, using verified lossless encoding or optional high-quality JPEG/WebP
+- Some images may be rejected if the size limit cannot be satisfied while honoring transparency, metadata and image-depth protections
 
-### Unchanged
+The Website quality control is independent of the **Compress** tab used by normal Convert. Results and failures appear in a dialog. The application no longer creates a TSV report for each export; on startup, it cleans up only previously generated `PixelShroom-Upload-Report-*.tsv` files in the app's `upload-reports` directory.
 
-- Existing conversion/resize processing code (`src/converter.cpp`, `src/converter.h`)
-- Your Phase 1 quality override and enhancement engine
-- `src/main.cpp`, the MSYS2 runtime DLL setup, and the existing FLIF warning
-- `CMakeLists.txt`, Qt Designer UI files, and original application settings
+**Note:** This prepares local image files for upload. It does not automatically transfer them to Supabase or the website. The Website tool preserves *existing* DPI; it does not assign a new DPI value based on the print settings in Resize.
 
-## Install on Windows
+## Build and test on Windows
 
-1. **Close Converseen** and keep your existing Phase 1 working-build backup.
-2. Extract this ZIP.
-3. Copy `pixel_shroom_converseen_phase2.py` into:
+The supported local build environment is **MSYS2 UCRT64**, Qt6, ImageMagick 7 Q16-HDRI, CMake and Ninja. Use the **UCRT64 shell**, not MINGW64.
 
-   `C:\Users\bulls\Documents\Projects\Converseen\`
-
-4. Open **Windows PowerShell**:
-
-   ```powershell
-   cd 'C:\Users\bulls\Documents\Projects\Converseen'
-   py -3 .\pixel_shroom_converseen_phase2.py
-   ```
-
-   You must see `DRY RUN PASSED`. This step checks compatibility without modifying files.
-
-5. Apply:
-
-   ```powershell
-   py -3 .\pixel_shroom_converseen_phase2.py --apply
-   ```
-
-   Before touching the source, the script backs up **the entire current `build` directory** and both files listed below to a sibling folder named `Converseen-phase2-working-backup-YYYYMMDD-HHMMSS`.
-
-6. Open **MSYS2 UCRT64**:
-
-   ```bash
-   cd /c/Users/bulls/Documents/Projects/Converseen
-   cmake --build build --parallel 4
-   ./build/converseen.exe
-   ```
-
-   If compilation fails, paste the **first `error:` line and ten surrounding lines**, not just the final Ninja message.
-
-## Source files replaced
-
-Only these files are edited:
-
-- `src/mainwindowimpl.cpp` — replaces the Phase 1 panel function and adds UI includes.
-- `src/dialogconversionstatus.cpp` — fixes long-filename display and window sizing.
-
-The patch **does not remove or modify** your current `build/converseen.exe` until you explicitly run CMake to rebuild.
-
-## Test plan
-
-1. Verify the status window displays long filenames in a separate column from `Converted`, `Skipped`, and `Error`.
-2. Resize a **copy** of one square image using the 600 × 600 web preset. Confirm size.
-3. Convert to JPEG at quality 90 (with quality override checked) and compare file sizes with quality 100.
-4. Try Enhance at smoothing 0.0/sharpen 0.0, then light settings to verify that effects are optional.
-5. Test the 16 × 16 in preset (4800 × 4800 pixels and 300 DPI) with a square source. **DPI alone does not add source image detail.**
-6. Test a non-square source against a square target: when aspect ratio is checked, the result **fits within** the target and may not exactly fill it. Unchecking aspect ratio stretches the output (no auto-cropping is performed).
-
-ImageMagick output verification:
+To build from an already-configured working clone:
 
 ```bash
-magick identify -format '%f: %wx%h, %x x %y %U, quality %Q\n' '/path/to/image.jpg'
+cd /c/Users/bulls/Documents/Projects/Converseen
+cmake --build build-audit --parallel 4
 ```
 
-## Rollback
+For a new isolated test build, after installing Qt6/ImageMagick development dependencies:
 
-Close Converseen, open the sibling `Converseen-phase2-working-backup-...` folder created by the script, and copy these original files into the corresponding project paths:
+```bash
+cmake -S . -B build-audit -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DUSE_QT6=ON \
+  -DDISABLE_CHECK_UPDATES=ON \
+  '-DCMAKE_CXX_FLAGS=-DMAGICKCORE_HDRI_ENABLE=1 -DMAGICKCORE_QUANTUM_DEPTH=16 -DPIXELSHROOM_PORTABLE_BUILD'
 
-- `src/mainwindowimpl.cpp`
-- `src/dialogconversionstatus.cpp`
+cmake --build build-audit --parallel 4
+```
 
-Then run `cmake --build build --parallel 4`. If needed, the backup also contains the complete original `build` directory.
+### Important portable runtime requirement
 
-**Never use `git restore src/main.cpp`** to roll this back; it could undo the separate DLL troubleshooting changes.
+A standalone `build-audit/converseen.exe` does **not** contain the Qt and ImageMagick runtime. For a portable-mode test, copy it to a **new test executable name** inside the existing complete portable application folder:
 
-## Compatibility and verification
+```bash
+cp build-audit/converseen.exe \
+  dist/PixelShroomImageStudio-Portable/PixelShroomImageStudio-Test.exe
+```
 
-This Phase 2 script was tested with a simulated Phase 1 project for safe anchor matching, preview-only mode, full-build backup, application, and double-application rejection. **It has not been compiled on your Windows machine**, so the local build remains the decisive test. It refuses to edit unmatched or already-Phase-2 source, instead of guessing where to insert code. Because Converseen is GPL software, preserve the required GPL notices and obligations if distributing a modified build.
+Launch the test executable from that folder. Do **not** replace your working `PixelShroomImageStudio.exe` or existing installer until the test is successful.
+
+For automated compile verification, see [Windows UCRT64 CI](.github/workflows/pixel-shroom-ucrt64.yml). That GitHub Actions job compiles and runs a non-GUI smoke test; it does **not** produce a release-ready portable package or installer.
+
+## Release checks
+
+1. Confirm the application opens from the full portable runtime.
+2. Test **Convert (F5)** with JPEG, PNG and WebP, including resize and quality controls.
+3. Verify a 4800 × 4800 export with print DPI enabled still records 300 DPI (approximately 118.11 pixels/cm).
+4. Test **Website → Optimize for website** with a checked image below 50 MiB: exactly one upload file, no preview, no TSV report.
+5. Test an image above 50 MiB with optional compression on and off; verify dimensions, metadata, transparency, and clearly reported failures.
+6. Verify unchecked items are excluded and windowed/maximized layouts still work.
+
+See [website export checklist](docs/WEBSITE_ONLY_EXPORT_RELEASE_TESTS.md) and [compression regression tests](docs/COMPRESSION_RELEASE_TESTS.md).
+
+## Maintenance
+
+Older phase-by-phase patch scripts are retained for historical traceability, but the repository's C++ source is the current application; **do not re-apply obsolete phase scripts to an updated checkout**. Avoid mixing a new compiler binary with an incomplete portable runtime.
+
+Copyright and third-party license requirements continue to apply to this fork. Consult the repository's license and upstream attribution files before redistributing binaries.
