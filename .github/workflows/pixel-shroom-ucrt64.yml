@@ -1,0 +1,77 @@
+name: Pixel Shroom — Windows UCRT64 compile
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'ui/**'
+      - 'res/**'
+      - 'resources.qrc'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/pixel-shroom-ucrt64.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ucrt64-qt6-imagemagick7:
+    name: UCRT64 / Qt6 / ImageMagick 7
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
+            mingw-w64-ucrt-x86_64-imagemagick
+
+      - name: Check selected toolchain
+        run: |
+          echo "MSYSTEM=$MSYSTEM"
+          test "$MSYSTEM" = "UCRT64"
+          cmake --version
+          g++ --version
+          magick -version
+          test -f /ucrt64/include/Magick++.h || find /ucrt64/include -name Magick++.h -print -quit
+
+      - name: Configure separate release build
+        run: |
+          cmake -S . -B build-ci -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_QT6=ON \
+            -DDISABLE_CHECK_UPDATES=ON \
+            '-DCMAKE_CXX_FLAGS=-DMAGICKCORE_HDRI_ENABLE=1 -DMAGICKCORE_QUANTUM_DEPTH=16'
+
+      - name: Compile executable
+        run: |
+          cmake --build build-ci --parallel 4
+          test -s build-ci/converseen.exe
+          ls -lh build-ci/converseen.exe
+
+      - name: Non-GUI formats smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ./build-ci/converseen.exe -p > build-ci/supported-formats.txt
+          test -s build-ci/supported-formats.txt
+
+# This workflow verifies compilation and the non-GUI -p command.
+# It does not create a portable ZIP or Inno Setup installer. A distributable
+# Windows executable still requires the complete bundled Qt/ImageMagick runtime.
