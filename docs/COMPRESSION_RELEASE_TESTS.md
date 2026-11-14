@@ -1,46 +1,38 @@
-# Pixel Shroom Image Studio — Compression regression checklist
+# Pixel Shroom Image Studio — Compression Regression Tests
 
-The **Compress** tab and the **Website** tab are different export paths.
+The two export functions are **independent**:
 
-## Normal batch conversion
-1. Import and check a JPEG or PNG image.
-2. Choose **JPEG** under **Convert to** (the output format).
-3. On **Compress**, enable **Set custom JPEG / WebP quality**. Export once at quality 95 and again at quality 82 into separate destination directories.
-4. Click **Convert** each time; changing the slider alone does **not** write a file.
-5. Check that both exports have the requested pixel dimensions and that the lower-quality output is generally smaller for a typical photographic image. Image contents can prevent strict size monotonicity.
-6. Repeat with **WebP**; enable **WebP lossless** and confirm its quality override is disabled. PNG compression 0–9 is lossless and may not reduce arbitrary already-compressed images.
-7. For print exports verify 300-DPI metadata:
-   `magick identify -format "%wx%h %x %y %[units]\n" OUTPUT.png`.
-   For 300 DPI, expect ~300 with `PixelsPerInch` or ~118.11 with `PixelsPerCentimeter`.
+- **Convert (F5)**: ordinary image conversions, print sizing, dpi stamping, JPEG/WebP quality override, PNG compression, smoothing/sharpening, file renaming and overwrite settings. All original conversion controls remain intact.
+- **Website → Optimize for website**: one original full-resolution upload image per checked input, strictly below 50 MiB. No preview/thumbnail, no duplicate image export. Website quality control is separate from the normal Compress tab.
 
-## Website optimization
-1. Select **Resize** dimensions as desired maximum preview bounds; **Website** uses the same values.
-2. Check only one or two queue images; leave another unchecked. Website must use only checked items.
-3. Under **Website**, keep **Automatically shrink previews** checked.
-4. With **high-quality original compression** unchecked, verify originals remain lossless or identical. If none fits under **50 MiB**, the app should report failure without writing an oversized file.
-5. For an 8-bit opaque PNG/JPEG larger than 50 MiB, enable **If original exceeds 50 MiB, allow high-quality JPEG/WebP compression** and optimize again into a different empty destination directory.
-6. The original output should keep the source pixel width and height and verified DPI/ICC metadata; the report should identify lossy JPEG/WebP and its chosen quality. This is a compressed copy, **not pixel-identical artwork**. The source file must remain unchanged.
-7. Confirm previews are **strictly under 10 MiB** and originals **strictly under 50 MiB**. If a candidate cannot fit without violating its quality or metadata constraints, a reported failure is correct.
-8. To validate an output pair:
-   ```powershell
-   py -3 tests\verify_website_export.py --source "C:\path\art.png" --original "C:\path\exports\art__original.jpg" --preview "C:\path\exports\art__preview.webp" --max-width 2048 --max-height 2048
-   ```
-9. Test an alpha-transparent input and a 16-bit original. They must **never** be silently flattened or downsampled to meet 50 MiB; valid outputs must satisfy the verified metadata and precision rules or report a failure.
-10. Test two source folders when **Image's directory** is selected: the optimizer must stop rather than save all outputs into the first source folder.
-11. Open **PixelShroom-Upload-Report-*.tsv** and inspect the message for each input. Report the first failed row along with the actual source size and format.
+## Normal Convert tests
 
-## Build the updated draft branch, without replacing your working release
+1. Import a JPEG or PNG; check its queue row and select JPEG under `Convert to`.
+2. On **Compress**, check **Set custom JPEG / WebP quality**; export at 95 then 82 using separate target folders. Both files should be created by the **Convert** toolbar button.
+3. Repeat with WebP lossy and WebP lossless; verify its lossy quality override and lossless checkbox behave consistently.
+4. Choose PNG and verify the visible PNG compression 0–9 controls work without unexpected quality loss; PNG file size may not always get smaller.
+5. On Resize, test 4800 × 4800 and 300 DPI; check with:
 
 ```bash
-git fetch origin
-git switch audit/precompile-cleanup-20261113
-cmake --build build-audit --parallel 4
+magick identify -format "%wx%h %x %y %[units]\n" output.png
 ```
 
-The build command alone does not validate image compression. Copy the new `build-audit/converseen.exe` into a separate test filename in the complete bundled portable runtime before launching it.
+300 DPI can display as ~300 PixelsPerInch or ~118.11 PixelsPerCentimeter.
 
-Do **not** merge the draft pull request or replace the installer until JPEG, PNG, WebP, 300-DPI, website limits, and batch selection all pass in Windows.
+6. Enable Enhance; ensure the settings affect normal Convert outputs. Verify metadata removal and renaming/overwrite behavior still work.
 
-## Caveats
+## Website tests
 
-Lossless encoding alone cannot guarantee a 50 MiB original for arbitrary complex or high-resolution artwork. A quality-limited lossy option can often meet the cap but cannot guarantee it for every input. WebP density/ICC support varies; the code rejects fallback candidates that fail its metadata checks rather than mislabeling them as equivalent.
+1. Select **Website** and check its own lossy fallback checkbox and quality value, independently of Compress.
+2. Optimize a checked image smaller than 50 MiB. It should create exactly one `__original` image, preserving original bytes, pixel dimensions and embedded DPI.
+3. Optimize an opaque 8-bit source larger than 50 MiB. If allowed, it should try high-quality JPEG/WebP for the full-sized copy without altering source artwork. An explicit failure is correct if it cannot meet size and metadata requirements.
+4. Confirm no `__preview` images are created.
+5. Check the output image directly:
+
+```powershell
+py -3 tests\verify_website_export.py --source "C:\art\source.png" --original "C:\art\processed\source__original.jpg"
+```
+
+6. Confirm the TSV diagnostic report is stored separately in the application's AppData directory.
+
+See [WEBSITE_ONLY_EXPORT_RELEASE_TESTS.md](WEBSITE_ONLY_EXPORT_RELEASE_TESTS.md) for the complete runtime checklist.
