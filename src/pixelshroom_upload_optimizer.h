@@ -253,7 +253,9 @@ inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &origi
             throw std::runtime_error("Cancelled during preview optimization");
         if (stage)
             stage(QObject::tr("Encoding preview (%1 x %2, attempt %3)")
-                    .arg(preview.columns()).arg(preview.rows()).arg(attempt + 1));
+                    .arg(static_cast<qulonglong>(preview.columns()))
+                    .arg(static_cast<qulonglong>(preview.rows()))
+                    .arg(attempt + 1));
         try {
             Magick::Image image(preview);
             if (codec == "webp") {
@@ -323,7 +325,8 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
             Magick::Image raw(inputBlob);
             // Lossless attempts are limited and fast; avoid 100%-effort
             // PNG/WebP work on multi-megapixel sources without a size need.
-            if (suffix == "png") {
+            if (suffix == "png" &&
+                (!allowLossyOriginal || raw.columns() * raw.rows() <= 16000000ULL)) {
                 try {
                     if (cancel && cancel->load()) throw std::runtime_error("Cancelled");
                     if (stage) stage(2, QObject::tr("Trying fast lossless PNG"));
