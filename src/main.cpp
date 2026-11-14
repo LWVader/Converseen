@@ -119,11 +119,7 @@ int main(int argc, char ** argv)
 #endif
     InitializeMagick(*argv);
 
-    #if defined(PIXELSHROOM_PORTABLE_BUILD)
     QCoreApplication::setApplicationName("Pixel Shroom Image Studio");
-#else
-    QCoreApplication::setApplicationName("Pixel Shroom Image Studio");
-#endif
     QCoreApplication::setApplicationVersion(globals::VERSION);
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
