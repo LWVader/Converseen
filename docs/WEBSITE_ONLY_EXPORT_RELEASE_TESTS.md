@@ -11,7 +11,7 @@ Website output requirements:
 - When a source already fits, make an identical byte-for-byte copy.
 - If the constraints cannot be met, report a failure rather than silently reduce resolution, flatten transparency, remove ICC data or downconvert 16-bit artwork.
 - **One image only** per checked input in the selected output directory, named `<stem>__original.<ext>`. Do not generate `__preview`.
-- Diagnostic TSV files are saved separately under the application's AppData `upload-reports` folder, *not* in the export image folder.
+- No TSV/diagnostic reports are written on export. Success counts and up to eight failure details are shown directly in the results dialog. On startup, the app removes legacy `PixelShroom-Upload-Report-*.tsv` files only from its AppData `upload-reports` folder; other app data and images remain untouched.
 - Files are prepared locally; there is no automatic Supabase upload.
 
 ## Build / test (MSYS2 UCRT64)
@@ -37,9 +37,10 @@ Open the copied test executable from inside the complete `dist/PixelShroomImageS
 6. Check a transparent image and a 16-bit input: no silent alpha flattening or 16-to-8-bit downgrade.
 7. Confirm a source tagged 300 DPI produces the same recorded DPI in its upload output. Website does **not** assign new 300 DPI to sources missing it.
 8. Test F5 normal Convert after Website optimization. Ensure it still runs original image conversion, **not** the Website optimizer.
-9. Verify Cancel stops work between compression attempts (individual ImageMagick encoding calls cannot be interrupted), and results/errors appear in the report.
+9. Verify Cancel stops work between compression attempts (individual ImageMagick encoding calls cannot be interrupted), and results/errors appear in the results dialog without creating a report file.
 10. Ensure unrelated mixed-directory sources are not silently exported into the first folder when **Image's directory** is selected.
-11. Run the updated read-only verifier, replacing paths with actual files:
+11. Close and reopen the updated program. Verify existing `PixelShroom-Upload-Report-*.tsv` files in the app's AppData `upload-reports` folder are removed; unrelated files in the folder are preserved. Confirm new Website exports do not create `.tsv` files.
+12. Run the updated read-only verifier, replacing paths with actual files:
 
 ```powershell
 py -3 tests\verify_website_export.py --source "C:\path\art.png" --original "C:\path\out\art__original.jpg"
