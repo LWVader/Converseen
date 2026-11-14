@@ -12,6 +12,8 @@ build/
 /Inno Setup 7/
 /build/
 /build-portable/
+/build-audit/
+/build-ci/
 /dist/
 
 .fake
