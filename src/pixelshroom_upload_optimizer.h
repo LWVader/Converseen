@@ -218,12 +218,15 @@ inline QString uniqueStem(const QString &baseName, const QString &outDir) {
 inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &original,
                                    const QString &suffix, int maxWidth, int maxHeight,
                                    bool downscale, int &width, int &height,
+                                   double smoothSigma, double sharpenSigma,
                                    const std::shared_ptr<std::atomic_bool> &cancel,
                                    const std::function<void(const QString &)> &stage) {
     const int iw = int(input.columns()), ih = int(input.rows());
     const int targetW = std::max(1, std::min(20000, maxWidth));
     const int targetH = std::max(1, std::min(20000, maxHeight));
-    if (original.size() < PreviewLimit && iw <= targetW && ih <= targetH) {
+    if (original.size() < PreviewLimit && iw <= targetW && ih <= targetH &&
+        (!downscale || std::max(iw, ih) <= 2560) &&
+        smoothSigma <= 0.0 && sharpenSigma <= 0.0) {
         // An already-valid original is also a valid, pixel-identical preview.
         width = iw;
         height = ih;
@@ -233,7 +236,7 @@ inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &origi
     double scale = std::min({1.0, double(targetW) / iw, double(targetH) / ih});
     // Prevent large input artwork from causing minutes of pointless
     // full-resolution preview encoding when automatic shrinking is enabled.
-    if (downscale && original.size() >= PreviewLimit) {
+    if (downscale && (original.size() >= PreviewLimit || std::max(iw, ih) > 2560)) {
         const double fastPreviewEdge = 2560.0;
         scale = std::min(scale, fastPreviewEdge / std::max(iw, ih));
     }
@@ -244,8 +247,19 @@ inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &origi
                                         size_t(std::max(1, qRound(ih * scale)))));
     }
 
+    // Enhance the website preview only. Never alter the full-size original
+    // pixels or source file; keep preview enhancement responsive by applying
+    // it after the initial downscale.
+    if (cancel && cancel->load())
+        throw std::runtime_error("Cancelled before enhancement");
+    if (smoothSigma > 0.0 || sharpenSigma > 0.0) {
+        if (stage) stage(QObject::tr("Enhancing website preview"));
+        if (smoothSigma > 0.0) preview.blur(0.0, smoothSigma);
+        if (sharpenSigma > 0.0) preview.sharpen(0.0, sharpenSigma);
+    }
+
     // One fast lossless codec at each size, instead of two maximum-effort
-    // encodes at up to 16 sizes. Honor 16-bit sources with PNG.
+    // encodes at up to 10 sizes. Honor 16-bit sources with PNG.
     const QString codec = preview.depth() > 8 ? QStringLiteral("png")
                                               : QStringLiteral("webp");
     for (int attempt = 0; attempt < 10; ++attempt) {
@@ -295,6 +309,7 @@ inline BlobCandidate choosePreview(Magick::Image &input, const QByteArray &origi
 inline Result process(const QString &sourcePath, const QString &targetDir,
                       int maxWidth, int maxHeight, bool downscale,
                       bool allowLossyOriginal, int preferredQuality,
+                      double smoothSigma, double sharpenSigma,
                       const std::shared_ptr<std::atomic_bool> &cancel,
                       const std::function<void(int, const QString &)> &stage) {
     Result result;
@@ -380,7 +395,7 @@ inline Result process(const QString &sourcePath, const QString &targetDir,
         if (stage) stage(3, QObject::tr("Preparing website preview (10 MiB limit)"));
         int pw = 0, ph = 0;
         BlobCandidate preview = choosePreview(input, bytes, suffix, maxWidth, maxHeight,
-             downscale, pw, ph, cancel,
+             downscale, pw, ph, smoothSigma, sharpenSigma, cancel,
              [stage](const QString &detail) { if (stage) stage(3, detail); });
         if (preview.bytes.size() >= PreviewLimit)
             throw std::runtime_error("Preview exceeds the 10 MiB limit");
@@ -419,6 +434,7 @@ inline QString safeTsv(QString s) {
 inline Summary batch(const QStringList &files, const QString &outDir,
                      int maxWidth, int maxHeight, bool downscale,
                      bool allowLossyOriginal, int preferredQuality,
+                     double smoothSigma, double sharpenSigma,
                      const std::shared_ptr<std::atomic_bool> &cancel,
                      const std::function<void(int, const QString &)> &reportStage) {
     Summary result;
@@ -439,7 +455,8 @@ inline Summary batch(const QStringList &files, const QString &outDir,
                     .arg(detail));
         };
         Result row = process(file, outDir, maxWidth, maxHeight, downscale,
-                             allowLossyOriginal, preferredQuality, cancel, progress);
+                             allowLossyOriginal, preferredQuality,
+                             smoothSigma, sharpenSigma, cancel, progress);
         if (row.success) ++result.passed; else ++result.failed;
         if (!row.success)
             progress(5, QObject::tr("Finished with an error; see export report"));
@@ -465,7 +482,8 @@ inline Summary batch(const QStringList &files, const QString &outDir,
 
 inline void start(QWidget *parent, const QStringList &files, const QString &targetDir,
                   int maxWidth, int maxHeight, bool downscale,
-                  bool allowLossyOriginal, int preferredQuality) {
+                  bool allowLossyOriginal, int preferredQuality,
+                  double smoothSigma, double sharpenSigma) {
     if (files.isEmpty()) {
         QMessageBox::information(parent, QObject::tr("No images"),
                                  QObject::tr("Import images first, then open Upload-ready."));
@@ -517,9 +535,11 @@ inline void start(QWidget *parent, const QStringList &files, const QString &targ
         }, Qt::QueuedConnection);
     };
     watcher->setFuture(QtConcurrent::run([files, targetDir, maxWidth, maxHeight, downscale,
-                                          allowLossyOriginal, preferredQuality, cancel, reportStage]() {
+                                          allowLossyOriginal, preferredQuality,
+                                          smoothSigma, sharpenSigma, cancel, reportStage]() {
         return batch(files, targetDir, maxWidth, maxHeight, downscale,
-                     allowLossyOriginal, preferredQuality, cancel, reportStage);
+                     allowLossyOriginal, preferredQuality,
+                     smoothSigma, sharpenSigma, cancel, reportStage);
     }));
 }
 
