@@ -685,8 +685,8 @@ void MainWindowImpl::setupPixelShroomControls()
     sharedSize->setObjectName("psUploadSharedDimensions");
     sharedSize->setWordWrap(true);
     auto updateSharedSize = [width, height, sharedSize]() {
-        sharedSize->setText(QObject::tr("Preview maximum from Resize: %1 x %2 px. "
-                    "No upscaling; reduce dimensions further only if the 10 MiB cap requires it.")
+        sharedSize->setText(QObject::tr("Website preview bounds from Resize: %1 x %2 px. "
+                    "Full-resolution originals retain their own pixels. Previews never upscale.")
                     .arg(width->value()).arg(height->value()));
     };
     QObject::connect(width, QOverload<int>::of(&QSpinBox::valueChanged),
@@ -711,15 +711,17 @@ void MainWindowImpl::setupPixelShroomControls()
            "16-bit originals remain lossless-only. The original source file is never overwritten."));
     uploadLayout->addWidget(allowLossyOriginal);
     auto *uploadQualityHint = new QLabel(
-        tr("When enabled, start with the Quality value in Compress and lower it no further "
-           "than 82 if needed. The copy keeps its pixel dimensions and verified print "
-           "resolution/ICC profile, but is not pixel-identical."), uploadTab);
+        tr("The Compress quality value is used only if optional full-resolution "
+           "compression is needed. Lossless copies preserve pixels. Lossy "
+           "copies retain full dimensions and verified DPI/ICC information."), uploadTab);
     uploadQualityHint->setWordWrap(true);
     uploadLayout->addWidget(uploadQualityHint);
-    auto *uploadAction = new QPushButton(tr("Optimize for website"), uploadTab);
-    uploadAction->setObjectName("psUploadAction");
-    uploadAction->setMinimumHeight(38);
-    uploadLayout->addWidget(uploadAction);
+    auto *uploadActionHint = new QLabel(
+        tr("Click 'Prepare upload' in the main toolbar (F5) to create a "
+           "full-resolution original and a web preview for each checked image."), uploadTab);
+    uploadActionHint->setWordWrap(true);
+    uploadActionHint->setObjectName("psUploadActionHint");
+    uploadLayout->addWidget(uploadActionHint);
     auto *uploadHint = new QLabel(
         tr("Exports are saved as __preview and __original pairs. Your source images "
            "are never overwritten. With fallback disabled, oversized originals fail "
@@ -1023,7 +1025,11 @@ void MainWindowImpl::setupPixelShroomControls()
     menu_Edit->addAction(settingsMenuAction);
     connect(settingsMenuAction, &QAction::triggered,
             settingsDialog, openSettingsWindow);
-    connect(uploadAction, &QPushButton::clicked, this,
+    // One primary action for the website's full-resolution and preview files.
+    actionConvert->setText(tr("Prepare upload"));
+    actionConvert->setToolTip(tr("Create a full-resolution upload copy under 50 MiB "
+                                 "and a website preview under 10 MiB (F5)."));
+    connect(actionConvert, &QAction::triggered, this,
             [this, width, height, allowPreviewDownscale, allowLossyOriginal, qualityNumber]() {
         // A 1-pixel value can be present before images have been selected;
         // never accidentally create unusably tiny website previews.
@@ -1348,8 +1354,9 @@ void MainWindowImpl::createActions()
     connect(actionRemoveItems, SIGNAL(triggered()), this, SLOT(removeItems()));
     connect(actionRemoveAllItems, SIGNAL(triggered()), this, SLOT(removeAllItems()));
 
-    // "Actions" actions
-    connect(actionConvert, SIGNAL(triggered()), this, SLOT(elabora()));
+    // The primary action is wired to website preparation after Image Studio
+    // builds its UI. Keep the legacy converter for rollback, but do not run
+    // a separate conversion process from this toolbar action.
 
     connect(actionInfo, SIGNAL(triggered()), this, SLOT(about()));
     connect(actionDonatePaypal, SIGNAL(triggered()), this, SLOT(openPaypalLink()));
